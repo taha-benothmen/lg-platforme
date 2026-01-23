@@ -5,7 +5,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { menusByRole } from "@/lib/data/menus"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { FileText, Package, Users } from "lucide-react"
+import { FileText, Package, CheckCircle } from "lucide-react"
 
 export default function DashboardPage() {
   return (
@@ -16,7 +16,7 @@ export default function DashboardPage() {
       } as React.CSSProperties}
     >
       <div className="flex h-screen w-screen">
-        <AppSidebar menu={menusByRole.etablissement} />
+        <AppSidebar menu={menusByRole.responsable} />
 
         <SidebarInset className="flex-1 flex flex-col overflow-hidden">
           <SiteHeader />
@@ -27,12 +27,23 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-3">
-                  <CardTitle className="text-sm font-medium">Devis</CardTitle>
+                  <CardTitle className="text-sm font-medium">Devis à traiter</CardTitle>
                   <FileText className="h-4 w-4 text-primary" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">0</div>
-                  <p className="text-xs text-muted-foreground">En attente de traitement</p>
+                  <p className="text-xs text-muted-foreground">En attente d'approbation</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
+                  <CardTitle className="text-sm font-medium">Approuvés</CardTitle>
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">0</div>
+                  <p className="text-xs text-muted-foreground">Devis approuvés ce mois</p>
                 </CardContent>
               </Card>
 
@@ -44,17 +55,6 @@ export default function DashboardPage() {
                 <CardContent>
                   <div className="text-2xl font-bold">0</div>
                   <p className="text-xs text-muted-foreground">Total des produits</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-3">
-                  <CardTitle className="text-sm font-medium">Chiffre d'affaires</CardTitle>
-                  <Users className="h-4 w-4 text-primary" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">0 TND</div>
-                  <p className="text-xs text-muted-foreground">Total des transactions</p>
                 </CardContent>
               </Card>
             </div>
