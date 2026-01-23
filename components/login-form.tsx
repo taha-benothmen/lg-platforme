@@ -5,17 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-
-// Import the JSON file with 3 accounts
-import accounts from "@/app/auth/accounts.json"
 import { authUtils } from "@/lib/auth"
 
 export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
@@ -23,31 +18,41 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setLoading(true)
+    setError("")
 
-    // Check if entered credentials match an account
-    const account = accounts.find(
-      (acc) => acc.email === email && acc.password === password
-    )
-
-    if (account) {
-      setError("")
-      
-      // Sauvegarder la session dans localStorage
-      authUtils.setSession({
-        email: account.email,
-        role: account.role as "ADMIN" | "ETABLISSEMENT" | "RESPONSABLE",
-        route: account.route,
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
       })
 
-      // Sauvegarder le rôle dans un cookie pour le middleware
-      document.cookie = `lg_user_role=${account.role}; path=/; max-age=86400` // 24 heures
+      const data = await response.json()
 
-      router.push(account.route) // redirect to the account's dashboard
-    } else {
-      setError("Invalid email or password")
+      if (!response.ok) {
+        setError(data.error || "Login failed")
+        return
+      }
+
+      // Save session in localStorage
+      authUtils.setSession({
+        email: data.user.email,
+        role: data.user.role,
+        route: data.user.route,
+      })
+
+      router.push(data.user.route)
+    } catch (err) {
+      setError("An error occurred. Please try again.")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -101,7 +106,9 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
               )}
 
               <Field>
-                <Button type="submit">Login</Button>
+                <Button type="submit" disabled={loading}>
+                  {loading ? "Logging in..." : "Login"}
+                </Button>
               </Field>
 
               

@@ -1,15 +1,10 @@
 generator client {
-  provider   = "prisma-client-js"
-  engineType = "binary"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
-
-/* ============================
-   ENUMS
-============================ */
 
 enum UserRole {
   ADMIN
@@ -25,10 +20,6 @@ enum DevisStatus {
   REJETE
   ACCEPTE
 }
-
-/* ============================
-   MODELS
-============================ */
 
 model User {
   id        String   @id @default(uuid())
@@ -77,4 +68,48 @@ model Product {
   @@map("products")
 }
 
-/* keep your remaining models exactly as before */
+model Etablissement {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+  email     String?
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("etablissements")
+}
+
+model Devis {
+  id          String      @id @default(uuid())
+  total       Decimal     @db.Decimal(10, 2)
+  status      DevisStatus @default(BROUILLON)
+  clientName  String
+  clientEmail String
+  clientPhone String?
+  clientAddr  String?
+  createdById String
+  createdBy   User        @relation("CreatedBy", fields: [createdById], references: [id])
+  validatedById String?
+  validatedBy   User?       @relation("ValidatedBy", fields: [validatedById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  items DevisItem[]
+
+  @@map("devis")
+}
+
+model DevisItem {
+  id        String  @id @default(uuid())
+  devisId   String
+  productId Int
+  quantity  Int
+  price     Decimal @db.Decimal(10, 2)
+
+  devis Devis @relation(fields: [devisId], references: [id])
+
+  @@map("devis_items")
+}
