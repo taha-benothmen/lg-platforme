@@ -1,0 +1,58 @@
+[
+    {
+      "id": "ETB001",
+      "name": "Tech Store Tunis",
+      "address": "Avenue Habib Bourguiba, Tunis",
+      "phone": "+216 71 123 456",
+      "email": "contact@techstore.tn",
+      "devisCount": 12,
+      "revenue": 25000,
+      "currency": "TND",
+      "createdAt": "2024-02-10"
+    },
+    {
+      "id": "ETB002",
+      "name": "PC Center Sfax",
+      "address": "Route de Gremda, Sfax",
+      "phone": "+216 74 987 654",
+      "email": "pccenter@sfax.tn",
+      "devisCount": 8,
+      "revenue": 14500,
+      "currency": "TND",
+      "createdAt": "2024-03-05"
+    },
+    {
+      "id": "ETB003",
+      "name": "Digital Shop Sousse",
+      "address": "Rue de la Corniche, Sousse",
+      "phone": "+216 73 456 789",
+      "email": "digital@sousse.tn",
+      "devisCount": 20,
+      "revenue": 42000,
+      "currency": "TND",
+      "createdAt": "2024-01-22"
+    },
+    {
+      "id": "ETB004",
+      "name": "IT Solutions Bizerte",
+      "address": "Zone Industrielle, Bizerte",
+      "phone": "+216 72 321 987",
+      "email": "itsolutions@bizerte.tn",
+      "devisCount": 5,
+      "revenue": 8200,
+      "currency": "TND",
+      "createdAt": "2024-04-12"
+    },
+    {
+      "id": "ETB005",
+      "name": "Smart Devices Nabeul",
+      "address": "Centre Ville, Nabeul",
+      "phone": "+216 72 654 321",
+      "email": "smart@nabeul.tn",
+      "devisCount": 15,
+      "revenue": 30500,
+      "currency": "TND",
+      "createdAt": "2024-02-28"
+    }
+  ]
+  

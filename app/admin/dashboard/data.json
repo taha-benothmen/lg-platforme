@@ -1,0 +1,66 @@
+{
+  "stats": {
+    "products": 128,
+    "devis": 42,
+    "etablissements": 7,
+    "revenue": 125000
+  },
+  "chart": {
+    "devis": [
+      { "date": "2025-01", "value": 5 },
+      { "date": "2025-02", "value": 9 },
+      { "date": "2025-03", "value": 12 },
+      { "date": "2025-04", "value": 16 }
+    ],
+    "revenue": [
+      { "date": "2025-01", "value": 12000 },
+      { "date": "2025-02", "value": 18000 },
+      { "date": "2025-03", "value": 24000 },
+      { "date": "2025-04", "value": 31000 }
+    ]
+  },
+  "topProducts": [
+    { "category": "PC Portable", "sales": 120, "fill": "var(--color-chrome)" },
+    { "category": "Souris", "sales": 90, "fill": "var(--color-safari)" },
+    { "category": "Clavier", "sales": 75, "fill": "var(--color-firefox)" },
+    { "category": "Switch Réseau", "sales": 50, "fill": "var(--color-edge)" },
+    { "category": "Accessoires", "sales": 30, "fill": "var(--color-other)" },
+    { "category": "Imprimante", "sales": 25, "fill": "var(--color-primary)" },
+    { "category": "Casque Audio", "sales": 40, "fill": "var(--color-secondary)" },
+    { "category": "Webcam", "sales": 15, "fill": "var(--color-accent)" }
+  ],
+  "recentDevis": [
+    {
+      "id": 1,
+      "client": "Entreprise A",
+      "date": "2025-12-20",
+      "total": 1500,
+      "etat": "attend accord client",
+      "produits": ["PC Portable", "Souris", "Clavier"]
+    },
+    {
+      "id": 2,
+      "client": "Entreprise B",
+      "date": "2025-12-22",
+      "total": 3000,
+      "etat": "attend accord responsable",
+      "produits": ["Switch Réseau", "Câble RJ45"]
+    },
+    {
+      "id": 3,
+      "client": "Entreprise C",
+      "date": "2025-12-25",
+      "total": 5000,
+      "etat": "accepted",
+      "produits": ["Licence Logiciel", "Serveur"]
+    },
+    {
+      "id": 4,
+      "client": "Entreprise D",
+      "date": "2025-12-27",
+      "total": 2200,
+      "etat": "rejected",
+      "produits": ["Imprimante"]
+    }
+  ]
+}

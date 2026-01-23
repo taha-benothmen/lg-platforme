@@ -1,0 +1,21 @@
+[
+    {
+      "email": "admin@example.com",
+      "password": "admin123",
+      "role": "ADMIN",
+      "route": "/admin/dashboard"
+    },
+    {
+      "email": "etablissement@example.com",
+      "password": "etab123",
+      "role": "ETABLISSEMENT",
+      "route": "/etablissement/produits"
+    },
+    {
+      "email": "responsable@example.com",
+      "password": "resp123",
+      "role": "RESPONSABLE",
+      "route": "/responsable/produits"
+    }
+  ]
+  

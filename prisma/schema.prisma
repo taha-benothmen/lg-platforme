@@ -1,0 +1,80 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+/* ============================
+   ENUMS
+============================ */
+
+enum UserRole {
+  ADMIN
+  ETABLISSEMENT
+  RESPONSABLE
+}
+
+enum DevisStatus {
+  BROUILLON
+  ENVOYE
+  APPROUVE
+  SUSPENDU
+  REJETE
+  ACCEPTE
+}
+
+/* ============================
+   MODELS
+============================ */
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      UserRole
+  firstName String?
+  lastName  String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  etablissement  Etablissement?
+  createdDevis   Devis[] @relation("CreatedBy")
+  validatedDevis Devis[] @relation("ValidatedBy")
+
+  @@map("users")
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  currency    String   @default("TND")
+  stock       Int      @default(0)
+  image       String?
+  isActive    Boolean  @default(true)
+  categoryId  Int
+
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@map("products")
+}
+
+/* keep your remaining models exactly as before */

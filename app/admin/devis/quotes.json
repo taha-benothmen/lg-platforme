@@ -1,0 +1,28 @@
+[
+    {
+      "id": 1,
+      "client": "Entreprise A",
+      "date": "2025-12-20",
+      "total": 1500,
+      "etat": "attend accord client",
+      "produits": ["PC Portable", "Souris", "Clavier"]
+    },
+    {
+      "id": 2,
+      "client": "Entreprise B",
+      "date": "2025-12-22",
+      "total": 3000,
+      "etat": "attend accord responsable",
+      "produits": ["Switch Réseau", "Câble RJ45"]
+    },
+    {
+      "id": 3,
+      "client": "Entreprise C",
+      "date": "2025-12-25",
+      "total": 5000,
+      "etat": "done",
+      "produits": ["Licence Logiciel", "Serveur"]
+    }
+  ]
+
+  
