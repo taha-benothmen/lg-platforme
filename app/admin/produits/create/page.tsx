@@ -28,10 +28,10 @@ export default function CreateProductPage() {
     price: "",
     currency: "TND",
     stock: "",
-    image: "",
     category: "",
   })
 
+  const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [newCategory, setNewCategory] = useState("")
@@ -63,7 +63,7 @@ export default function CreateProductPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      setForm({ ...form, image: file.name })
+      setImageFile(file)
       setImagePreview(URL.createObjectURL(file))
     }
   }
@@ -82,8 +82,7 @@ export default function CreateProductPage() {
     if (newCategory.trim()) {
       try {
         console.log("📝 Creating new category:", newCategory.trim())
-        
-        // Envoyer la requête à l'API pour créer la catégorie
+
         const response = await fetch("/api/categories", {
           method: "POST",
           headers: {
@@ -102,16 +101,16 @@ export default function CreateProductPage() {
 
         // Ajouter la nouvelle catégorie à la liste
         setCategories([...categories, createdCategory])
-        
+
         // Sélectionner la nouvelle catégorie
         setForm({ ...form, category: createdCategory.name })
         setShowNewCategory(false)
         setNewCategory("")
-        
+
         // Afficher le message de succès
         setSuccessMessage("Catégorie créée avec succès!")
         setError("")
-        
+
         // Masquer le message après 3 secondes
         setTimeout(() => setSuccessMessage(""), 3000)
       } catch (err: any) {
@@ -129,36 +128,38 @@ export default function CreateProductPage() {
     setSuccessMessage("")
 
     try {
-      // Préparer les données
-      const productData: any = {
-        name: form.name,
-        description: form.description,
-        price: form.price,
-        currency: form.currency,
-        stock: form.stock,
-        image: form.image,
+      // Validation
+      if (!form.name || !form.price || !form.stock || !form.category) {
+        throw new Error("Veuillez remplir tous les champs obligatoires")
       }
 
-      // Si c'est une nouvelle catégorie, utiliser categoryName, sinon categoryId
-      if (showNewCategory && newCategory) {
-        productData.categoryName = newCategory
-      } else if (form.category) {
-        // Trouver l'ID de la catégorie sélectionnée
-        const selectedCategory = categories.find((cat) => cat.name === form.category)
-        if (selectedCategory) {
-          productData.categoryId = selectedCategory.id
-        } else {
-          // Si la catégorie n'est pas trouvée, utiliser le nom
-          productData.categoryName = form.category
-        }
+      if (!imageFile) {
+        throw new Error("Veuillez sélectionner une image")
       }
+
+      // Créer FormData
+      const formData = new FormData()
+      formData.append("name", form.name)
+      formData.append("description", form.description)
+      formData.append("price", form.price)
+      formData.append("currency", form.currency)
+      formData.append("stock", form.stock)
+      formData.append("image", imageFile)
+
+      // Trouver l'ID de la catégorie sélectionnée
+      const selectedCategory = categories.find((cat) => cat.name === form.category)
+      if (selectedCategory) {
+        formData.append("categoryId", selectedCategory.id.toString())
+      } else {
+        // Si la catégorie n'est pas trouvée, utiliser le nom
+        formData.append("categoryName", form.category)
+      }
+
+      console.log("📤 Envoi du produit avec image...")
 
       const response = await fetch("/api/products", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(productData),
+        body: formData, // Envoyer FormData directement
       })
 
       if (!response.ok) {
@@ -167,10 +168,15 @@ export default function CreateProductPage() {
       }
 
       const createdProduct = await response.json()
-      console.log("Product created:", createdProduct)
-      
-      // Rediriger vers la liste des produits
-      router.push("/admin/produits")
+      console.log("✅ Product created:", createdProduct)
+
+      setSuccessMessage("Produit créé avec succès! Redirection...")
+      setError("")
+
+      // Rediriger vers la liste des produits après 2 secondes
+      setTimeout(() => {
+        router.push("/admin/produits")
+      }, 2000)
     } catch (err: any) {
       console.error("Error creating product:", err)
       setError(err.message || "Erreur lors de la création du produit")
@@ -193,10 +199,7 @@ export default function CreateProductPage() {
         <SidebarInset className="flex-1 flex flex-col overflow-hidden">
           <SiteHeader />
           <div className="flex-1 overflow-y-auto px-6 py-6 lg:px-8 flex justify-center items-start">
-            <form
-              onSubmit={handleSubmit}
-              className="space-y-6 w-full max-w-2xl bg-white p-6 rounded shadow"
-            >
+            <div className="space-y-6 w-full max-w-2xl bg-white p-6 rounded shadow">
               <h1 className="text-2xl font-bold mb-6 text-center">Créer un produit</h1>
 
               {/* Success Alert */}
@@ -268,9 +271,9 @@ export default function CreateProductPage() {
                     <Button type="button" onClick={handleAddNewCategory} size="sm">
                       Ajouter
                     </Button>
-                    <Button 
-                      type="button" 
-                      variant="outline" 
+                    <Button
+                      type="button"
+                      variant="outline"
                       onClick={() => setShowNewCategory(false)}
                       size="sm"
                     >
@@ -306,6 +309,7 @@ export default function CreateProductPage() {
                       id="price"
                       name="price"
                       type="number"
+                      step="0.01"
                       value={form.price}
                       onChange={handleChange}
                       placeholder="Prix"
@@ -340,7 +344,7 @@ export default function CreateProductPage() {
 
               {/* Image Upload */}
               <div>
-                <Label htmlFor="image" className="mb-2 block">Photo du produit</Label>
+                <Label htmlFor="image" className="mb-2 block">Photo du produit *</Label>
                 <input
                   type="file"
                   id="image"
@@ -350,14 +354,17 @@ export default function CreateProductPage() {
                   required
                 />
                 {imagePreview && (
-                  <img src={imagePreview} alt="Preview" className="mt-2 max-h-64 object-contain border rounded" />
+                  <div className="mt-2">
+                    <img src={imagePreview} alt="Preview" className="max-h-64 object-contain border rounded" />
+                    <p className="text-sm text-gray-600 mt-2">Image sélectionnée: {imageFile?.name}</p>
+                  </div>
                 )}
               </div>
 
-              <Button type="submit" className="mt-4 w-full" disabled={loading}>
+              <Button onClick={handleSubmit} className="mt-4 w-full" disabled={loading}>
                 {loading ? "Création en cours..." : "Créer le produit"}
               </Button>
-            </form>
+            </div>
           </div>
         </SidebarInset>
       </div>

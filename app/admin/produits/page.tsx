@@ -1,16 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
-import productsData from "./products.json"
-import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { menusByRole } from "@/lib/data/menus"
 import {
   Dialog,
@@ -27,31 +27,139 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { EyeOff, Trash2, Edit, Upload } from "lucide-react"
+import { EyeOff, Trash2, Edit, Upload, Loader2, Plus, CheckCircle2, AlertCircle, X } from "lucide-react"
+
+interface Product {
+  id: number
+  name: string
+  description: string | null
+  price: number
+  currency: string
+  stock: number
+  image: string | null
+  imageType: string | null
+  isActive: boolean
+  categoryId: number
+  category: {
+    id: number
+    name: string
+  }
+  createdAt: string
+  updatedAt: string
+}
+
+interface Category {
+  id: number
+  name: string
+}
+
+interface AlertMessage {
+  type: "success" | "error"
+  title: string
+  message: string
+}
+
+interface ConfirmDialog {
+  isOpen: boolean
+  productId: number | null
+}
 
 export default function ProduitsPage() {
+  const router = useRouter()
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null)
-  const [productsList, setProductsList] = useState(productsData)
+  const [productsList, setProductsList] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [hiddenProducts, setHiddenProducts] = useState<Set<number>>(new Set())
   const [isEditing, setIsEditing] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [alertMessage, setAlertMessage] = useState<AlertMessage | null>(null)
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({ isOpen: false, productId: null })
+  
   const [editForm, setEditForm] = useState({
     id: 0,
     name: "",
     description: "",
     price: 0,
     currency: "TND",
-    category: "",
+    categoryId: 0,
     stock: 0,
-    image: "",
   })
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null)
 
-  const handleDelete = (productId: number) => {
-    setProductsList({
-      ...productsList,
-      products: productsList.products.filter((p) => p.id !== productId),
-    })
-    setSelectedProduct(null)
+  useEffect(() => {
+    fetchProducts()
+    fetchCategories()
+  }, [])
+
+  useEffect(() => {
+    if (alertMessage) {
+      const timer = setTimeout(() => setAlertMessage(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [alertMessage])
+
+  const showAlert = (type: "success" | "error", title: string, message: string) => {
+    setAlertMessage({ type, title, message })
+  }
+
+  const fetchProducts = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch("/api/products")
+      if (!response.ok) throw new Error("Erreur lors du chargement")
+      const data = await response.json()
+      console.log("📦 Produits chargés:", data.length)
+      setProductsList(data)
+    } catch (error) {
+      console.error("Erreur:", error)
+      showAlert("error", "Erreur", "Erreur lors du chargement des produits")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch("/api/categories")
+      if (!response.ok) throw new Error("Erreur")
+      const data = await response.json()
+      setCategories(data)
+    } catch (error) {
+      console.error("Erreur:", error)
+    }
+  }
+
+  const handleDelete = async (productId: number) => {
+    setConfirmDialog({ isOpen: true, productId })
+  }
+
+  const confirmDelete = async () => {
+    const productId = confirmDialog.productId
+    if (!productId) return
+
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Erreur de suppression")
+      }
+      
+      setProductsList(productsList.filter((p) => p.id !== productId))
+      setSelectedProduct(null)
+      setConfirmDialog({ isOpen: false, productId: null })
+      showAlert("success", "Succès", "Produit supprimé avec succès !")
+    } catch (error) {
+      console.error("Erreur:", error)
+      showAlert("error", "Erreur", `Erreur lors de la suppression: ${error}`)
+      setConfirmDialog({ isOpen: false, productId: null })
+    }
+  }
+
+  const cancelDelete = () => {
+    setConfirmDialog({ isOpen: false, productId: null })
   }
 
   const handleToggleVisibility = (productId: number) => {
@@ -67,40 +175,73 @@ export default function ProduitsPage() {
   }
 
   const handleEdit = (productId: number) => {
-    const product = productsList.products.find((p) => p.id === productId)
+    const product = productsList.find((p) => p.id === productId)
     if (product) {
-      setEditForm(product)
-      setImagePreview(product.image)
+      setEditForm({
+        id: product.id,
+        name: product.name,
+        description: product.description || "",
+        price: product.price,
+        currency: product.currency,
+        categoryId: product.categoryId,
+        stock: product.stock,
+      })
+      setEditImagePreview(product.image)
       setIsEditing(true)
     }
   }
 
   const handleCancelEdit = () => {
     setIsEditing(false)
-    setImagePreview(null)
+    setEditImagePreview(null)
     setEditForm({
       id: 0,
       name: "",
       description: "",
       price: 0,
       currency: "TND",
-      category: "",
+      categoryId: 0,
       stock: 0,
-      image: "",
     })
   }
 
-  const handleSaveEdit = () => {
-    setProductsList({
-      ...productsList,
-      products: productsList.products.map((p) =>
-        p.id === editForm.id ? editForm : p
-      ),
-    })
-    setIsEditing(false)
-    setImagePreview(null)
-    setSelectedProduct(null)
-    alert("Produit modifié avec succès !")
+  const handleSaveEdit = async () => {
+    try {
+      const form = new FormData()
+      form.append("name", editForm.name)
+      form.append("description", editForm.description)
+      form.append("price", editForm.price.toString())
+      form.append("currency", editForm.currency)
+      form.append("stock", editForm.stock.toString())
+      form.append("categoryId", editForm.categoryId.toString())
+
+      const fileInput = document.getElementById("edit-image") as HTMLInputElement
+      if (fileInput?.files?.[0]) {
+        form.append("image", fileInput.files[0])
+      }
+
+      const response = await fetch(`/api/products/${editForm.id}`, {
+        method: "PUT",
+        body: form,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Erreur de mise à jour")
+      }
+
+      const updatedProduct = await response.json()
+      setProductsList(
+        productsList.map((p) => (p.id === editForm.id ? updatedProduct : p))
+      )
+      setIsEditing(false)
+      setEditImagePreview(null)
+      setSelectedProduct(null)
+      showAlert("success", "Succès", "Produit modifié avec succès !")
+    } catch (error) {
+      console.error("Erreur:", error)
+      showAlert("error", "Erreur", `Erreur lors de la modification: ${error}`)
+    }
   }
 
   const handleEditFormChange = (
@@ -109,26 +250,51 @@ export default function ProduitsPage() {
     const { name, value } = e.target
     setEditForm({
       ...editForm,
-      [name]: name === "price" || name === "stock" ? Number(value) : value,
+      [name]: name === "price" || name === "stock" || name === "categoryId" ? Number(value) : value,
     })
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       const imageUrl = URL.createObjectURL(file)
-      setImagePreview(imageUrl)
-      setEditForm({ ...editForm, image: imageUrl })
+      setEditImagePreview(imageUrl)
     }
   }
 
-  const visibleProducts = productsList.products.filter(
+  const filteredProducts = productsList.filter((p) => {
+    if (selectedCategory === "all") return true
+    return p.categoryId === parseInt(selectedCategory)
+  })
+
+  const visibleProducts = filteredProducts.filter(
     (p) => !hiddenProducts.has(p.id)
   )
 
-  const currentProduct = productsList.products.find(
-    (p) => p.id === selectedProduct
-  )
+  const currentProduct = productsList.find((p) => p.id === selectedProduct)
+
+  if (isLoading) {
+    return (
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "calc(var(--spacing) * 72)",
+            "--header-height": "calc(var(--spacing) * 12)",
+          } as React.CSSProperties
+        }
+      >
+        <div className="flex h-screen w-screen">
+          <AppSidebar menu={menusByRole.admin} />
+          <SidebarInset className="flex-1 flex flex-col overflow-hidden">
+            <SiteHeader />
+            <div className="flex-1 flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
+    )
+  }
 
   return (
     <SidebarProvider
@@ -140,289 +306,379 @@ export default function ProduitsPage() {
       }
     >
       <div className="flex h-screen w-screen">
-        {/* Sidebar fixe */}
         <AppSidebar menu={menusByRole.admin} />
 
-        {/* Contenu principal */}
         <SidebarInset className="flex-1 flex flex-col overflow-hidden">
-          {/* Header sticky */}
           <SiteHeader />
 
-          {/* Partie scrollable */}
           <div className="flex-1 overflow-y-auto px-6 py-4 lg:px-8">
-            <h1 className="text-2xl font-bold mb-6">Catalogue des produits</h1>
-
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {visibleProducts.map((product) => (
-                <div key={product.id}>
-                  <Dialog
-                    open={selectedProduct === product.id}
-                    onOpenChange={(open) => {
-                      setSelectedProduct(open ? product.id : null)
-                      if (!open) {
-                        setIsEditing(false)
-                        setImagePreview(null)
-                      }
-                    }}
+            {alertMessage && (
+              <div className="mb-4 animate-in fade-in slide-in-from-top-2">
+                <Alert 
+                  variant={alertMessage.type === "success" ? "default" : "destructive"}
+                  className={alertMessage.type === "success" ? "bg-green-50 border-green-200" : ""}
+                >
+                  {alertMessage.type === "success" ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4" />
+                  )}
+                  <AlertTitle>{alertMessage.title}</AlertTitle>
+                  <AlertDescription>{alertMessage.message}</AlertDescription>
+                  <button
+                    onClick={() => setAlertMessage(null)}
+                    className="absolute top-4 right-4"
                   >
-                    {/* Card triggers the dialog */}
-                    <DialogTrigger asChild>
-                      <Card className="overflow-hidden cursor-pointer hover:shadow-lg transition">
-                        <Image
-                          src={product.image}
-                          alt={product.name}
-                          width={400}
-                          height={250}
-                          className="h-48 w-full object-cover"
-                        />
-                        <CardContent className="p-4 space-y-2">
-                          <h2 className="font-semibold text-lg">
-                            {product.name}
-                          </h2>
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {product.description}
-                          </p>
+                    <X className="h-4 w-4" />
+                  </button>
+                </Alert>
+              </div>
+            )}
 
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold">
-                              {product.price} {product.currency}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              Stock: {product.stock}
-                            </span>
-                          </div>
-
-                          <Button variant="outline" className="w-full" size="sm">
-                            Voir détails
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    </DialogTrigger>
-
-                    {/* Dialog content */}
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>
-                          {isEditing ? "Modifier le produit" : currentProduct?.name}
-                        </DialogTitle>
-                      </DialogHeader>
-
-                      {!isEditing ? (
-                        // Mode Affichage
-                        <div className="grid md:grid-cols-2 gap-4">
-                          {/* Image */}
-                          <div>
-                            <Image
-                              src={currentProduct?.image || ""}
-                              alt={currentProduct?.name || ""}
-                              width={400}
-                              height={300}
-                              className="object-cover rounded w-full"
-                            />
-                          </div>
-
-                          {/* Informations */}
-                          <div className="flex flex-col justify-between">
-                            <div>
-                              <p className="text-sm text-muted-foreground mb-2">
-                                <span className="font-semibold">Catégorie:</span>{" "}
-                                {currentProduct?.category}
-                              </p>
-                              <p className="text-sm text-muted-foreground mb-4">
-                                {currentProduct?.description}
-                              </p>
-                              <div className="flex justify-between items-center mb-4">
-                                <span className="font-bold text-2xl">
-                                  {currentProduct?.price} {currentProduct?.currency}
-                                </span>
-                                <span className="text-sm text-muted-foreground">
-                                  Stock: {currentProduct?.stock}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Buttons section */}
-                            <div className="space-y-2">
-                              <Button className="w-full" size="sm">
-                                Ajouter au panier
-                              </Button>
-
-                              <div className="grid grid-cols-3 gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleEdit(currentProduct?.id || 0)
-                                  }}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleToggleVisibility(currentProduct?.id || 0)
-                                    setSelectedProduct(null)
-                                  }}
-                                >
-                                  <EyeOff className="h-4 w-4" />
-                                </Button>
-
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleDelete(currentProduct?.id || 0)
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-
-                              <DialogClose asChild>
-                                <Button variant="ghost" className="w-full" size="sm">
-                                  Fermer
-                                </Button>
-                              </DialogClose>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        // Mode Édition
-                        <div className="space-y-4 py-2">
-                          {/* Nom du produit */}
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-name">Nom du produit</Label>
-                            <Input
-                              id="edit-name"
-                              name="name"
-                              value={editForm.name}
-                              onChange={handleEditFormChange}
-                              placeholder="Nom du produit"
-                            />
-                          </div>
-
-                          {/* Catégorie */}
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-category">Catégorie</Label>
-                            <Select
-                              value={editForm.category}
-                              onValueChange={(value) =>
-                                setEditForm({ ...editForm, category: value })
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Sélectionner une catégorie" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {productsList.categories.map((cat) => (
-                                  <SelectItem key={cat.id} value={cat.name}>
-                                    {cat.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Description */}
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-description">Description</Label>
-                            <Textarea
-                              id="edit-description"
-                              name="description"
-                              value={editForm.description}
-                              onChange={handleEditFormChange}
-                              placeholder="Description du produit"
-                              rows={3}
-                            />
-                          </div>
-
-                          {/* Prix et Stock */}
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="edit-price">Prix</Label>
-                              <Input
-                                id="edit-price"
-                                name="price"
-                                type="number"
-                                value={editForm.price}
-                                onChange={handleEditFormChange}
-                                placeholder="Prix"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="edit-stock">Stock</Label>
-                              <Input
-                                id="edit-stock"
-                                name="stock"
-                                type="number"
-                                value={editForm.stock}
-                                onChange={handleEditFormChange}
-                                placeholder="Stock"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Image Upload */}
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-image">Photo du produit</Label>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                id="edit-image"
-                                type="file"
-                                accept="image/*"
-                                onChange={handleFileChange}
-                                className="flex-1"
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                onClick={() => document.getElementById("edit-image")?.click()}
-                              >
-                                <Upload className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            {imagePreview && (
-                              <div className="mt-2 border rounded-lg overflow-hidden">
-                                <Image
-                                  src={imagePreview}
-                                  alt="Preview"
-                                  width={400}
-                                  height={200}
-                                  className="w-full h-48 object-cover"
-                                />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Boutons d'action */}
-                          <div className="flex gap-3 pt-4">
-                            <Button
-                              onClick={handleSaveEdit}
-                              className="flex-1"
-                            >
-                              Enregistrer
-                            </Button>
-                            <Button
-                              onClick={handleCancelEdit}
-                              variant="outline"
-                              className="flex-1"
-                            >
-                              Annuler
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </DialogContent>
-                  </Dialog>
+            <Dialog open={confirmDialog.isOpen} onOpenChange={(open) => !open && cancelDelete()}>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Confirmer la suppression</DialogTitle>
+                </DialogHeader>
+                <p className="text-muted-foreground">
+                  Êtes-vous sûr de vouloir supprimer ce produit ? Cette action ne peut pas être annulée.
+                </p>
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    onClick={confirmDelete}
+                    variant="destructive"
+                    className="flex-1"
+                  >
+                    Supprimer
+                  </Button>
+                  <Button
+                    onClick={cancelDelete}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    Annuler
+                  </Button>
                 </div>
+              </DialogContent>
+            </Dialog>
+
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-2xl font-bold">Catalogue des produits</h1>
+              <Button onClick={() => router.push("/admin/produits/create")}>
+                <Plus className="mr-2 h-4 w-4" />
+                Ajouter un produit
+              </Button>
+            </div>
+
+            <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+              <Button
+                variant={selectedCategory === "all" ? "default" : "outline"}
+                onClick={() => setSelectedCategory("all")}
+                className="whitespace-nowrap"
+              >
+                Tous les produits
+              </Button>
+              {categories.map((cat) => (
+                <Button
+                  key={cat.id}
+                  variant={selectedCategory === cat.id.toString() ? "default" : "outline"}
+                  onClick={() => setSelectedCategory(cat.id.toString())}
+                  className="whitespace-nowrap"
+                >
+                  {cat.name}
+                </Button>
               ))}
             </div>
+
+            {visibleProducts.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-muted-foreground">Aucun produit disponible</p>
+              </div>
+            ) : (
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {visibleProducts.map((product) => (
+                  <div key={product.id}>
+                    <Dialog
+                      open={selectedProduct === product.id}
+                      onOpenChange={(open) => {
+                        setSelectedProduct(open ? product.id : null)
+                        if (!open) {
+                          setIsEditing(false)
+                          setEditImagePreview(null)
+                        }
+                      }}
+                    >
+                      <DialogTrigger asChild>
+                        <Card className="overflow-hidden cursor-pointer hover:shadow-lg transition">
+                          {product.image ? (
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              className="h-48 w-full object-cover"
+                              onError={(e) => {
+                                console.error(`❌ Erreur chargement image: ${product.name}`)
+                                const target = e.target as HTMLImageElement
+                                target.style.display = "none"
+                                const errorDiv = document.createElement('div')
+                                errorDiv.className = "h-48 w-full bg-gray-200 flex items-center justify-center"
+                                errorDiv.innerHTML = '<span class="text-gray-400">Erreur image</span>'
+                                target.parentNode?.appendChild(errorDiv)
+                              }}
+                              onLoad={() => console.log(`✅ Image chargée: ${product.name}`)}
+                            />
+                          ) : (
+                            <div className="h-48 w-full bg-gray-200 flex items-center justify-center">
+                              <span className="text-gray-400">Pas d'image</span>
+                            </div>
+                          )}
+                          <CardContent className="p-4 space-y-2">
+                            <h2 className="font-semibold text-lg">
+                              {product.name}
+                            </h2>
+                            <p className="text-sm text-muted-foreground line-clamp-2">
+                              {product.description || "Pas de description"}
+                            </p>
+
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold">
+                                {product.price} {product.currency}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                Stock: {product.stock}
+                              </span>
+                            </div>
+
+                            <Button variant="outline" className="w-full" size="sm">
+                              Voir détails
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      </DialogTrigger>
+
+                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle>
+                            {isEditing ? "Modifier le produit" : currentProduct?.name}
+                          </DialogTitle>
+                        </DialogHeader>
+
+                        {!isEditing ? (
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                              {currentProduct?.image ? (
+                                <img
+                                  src={currentProduct.image}
+                                  alt={currentProduct.name}
+                                  className="object-cover rounded w-full"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement
+                                    target.style.display = "none"
+                                    const errorDiv = document.createElement('div')
+                                    errorDiv.className = "h-64 w-full bg-gray-200 flex items-center justify-center rounded"
+                                    errorDiv.innerHTML = '<span class="text-gray-400">Erreur image</span>'
+                                    target.parentNode?.appendChild(errorDiv)
+                                  }}
+                                />
+                              ) : (
+                                <div className="h-64 w-full bg-gray-200 flex items-center justify-center rounded">
+                                  <span className="text-gray-400">Pas d'image</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col justify-between">
+                              <div>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  <span className="font-semibold">Catégorie:</span>{" "}
+                                  {currentProduct?.category.name}
+                                </p>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                  {currentProduct?.description || "Pas de description"}
+                                </p>
+                                <div className="flex justify-between items-center mb-4">
+                                  <span className="font-bold text-2xl">
+                                    {currentProduct?.price} {currentProduct?.currency}
+                                  </span>
+                                  <span className="text-sm text-muted-foreground">
+                                    Stock: {currentProduct?.stock}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <Button className="w-full" size="sm">
+                                  Ajouter au panier
+                                </Button>
+
+                                <div className="grid grid-cols-3 gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleEdit(currentProduct?.id || 0)
+                                    }}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleToggleVisibility(currentProduct?.id || 0)
+                                      setSelectedProduct(null)
+                                    }}
+                                  >
+                                    <EyeOff className="h-4 w-4" />
+                                  </Button>
+
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleDelete(currentProduct?.id || 0)
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+
+                                <DialogClose asChild>
+                                  <Button variant="ghost" className="w-full" size="sm">
+                                    Fermer
+                                  </Button>
+                                </DialogClose>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-4 py-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="edit-name">Nom du produit</Label>
+                              <Input
+                                id="edit-name"
+                                name="name"
+                                value={editForm.name}
+                                onChange={handleEditFormChange}
+                                placeholder="Nom du produit"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="edit-category">Catégorie</Label>
+                              <Select
+                                value={editForm.categoryId.toString()}
+                                onValueChange={(value) =>
+                                  setEditForm({ ...editForm, categoryId: Number(value) })
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Sélectionner une catégorie" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {categories.map((cat) => (
+                                    <SelectItem key={cat.id} value={cat.id.toString()}>
+                                      {cat.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="edit-description">Description</Label>
+                              <Textarea
+                                id="edit-description"
+                                name="description"
+                                value={editForm.description}
+                                onChange={handleEditFormChange}
+                                placeholder="Description du produit"
+                                rows={3}
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="edit-price">Prix</Label>
+                                <Input
+                                  id="edit-price"
+                                  name="price"
+                                  type="number"
+                                  step="0.01"
+                                  value={editForm.price}
+                                  onChange={handleEditFormChange}
+                                  placeholder="Prix"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="edit-stock">Stock</Label>
+                                <Input
+                                  id="edit-stock"
+                                  name="stock"
+                                  type="number"
+                                  value={editForm.stock}
+                                  onChange={handleEditFormChange}
+                                  placeholder="Stock"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="edit-image">Photo du produit</Label>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  id="edit-image"
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleEditImageChange}
+                                  className="flex-1"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => document.getElementById("edit-image")?.click()}
+                                >
+                                  <Upload className="h-4 w-4" />
+                                </Button>
+                              </div>
+                              {editImagePreview && (
+                                <div className="mt-2 border rounded-lg overflow-hidden">
+                                  <img
+                                    src={editImagePreview}
+                                    alt="Preview"
+                                    className="w-full h-48 object-cover"
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                              <Button
+                                onClick={handleSaveEdit}
+                                className="flex-1"
+                              >
+                                Enregistrer
+                              </Button>
+                              <Button
+                                onClick={handleCancelEdit}
+                                variant="outline"
+                                className="flex-1"
+                              >
+                                Annuler
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </SidebarInset>
       </div>

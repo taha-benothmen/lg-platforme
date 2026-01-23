@@ -5,10 +5,7 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
-
 }
-
-
 
 enum UserRole {
   ADMIN
@@ -47,39 +44,42 @@ model User {
 model Category {
   id          Int       @id @default(autoincrement())
   name        String    @unique
-  description String?
-  // Commentez temporairement ces colonnes
-  // createdAt   DateTime  @default(now())
-  // updatedAt   DateTime  @updatedAt
-  
+  description String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   products    Product[]
 
   @@map("categories")
 }
+
 model Product {
   id          Int      @id @default(autoincrement())
-  name        String
-  description String?
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
   price       Decimal  @db.Decimal(10, 2)
   currency    String   @default("TND")
   stock       Int      @default(0)
-  image       String?
+  image       Bytes?   // Stocker l'image en binaire (Base64)
+  imageType   String?  @db.VarChar(50)  // Type MIME : "image/png", "image/jpeg", etc.
   isActive    Boolean  @default(true)
-  categoryId  Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  category Category @relation(fields: [categoryId], references: [id])
+  categoryId  Int
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@map("products")
 }
 
 model Etablissement {
   id        String   @id @default(uuid())
-  name      String
-  address   String?
-  phone     String?
-  email     String?
+  name      String   @db.VarChar(255)
+  address   String?  @db.Text
+  phone     String?  @db.VarChar(20)
+  email     String?  @db.VarChar(255)
   userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -87,19 +87,19 @@ model Etablissement {
 }
 
 model Devis {
-  id          String      @id @default(uuid())
-  total       Decimal     @db.Decimal(10, 2)
-  status      DevisStatus @default(BROUILLON)
-  clientName  String
-  clientEmail String
-  clientPhone String?
-  clientAddr  String?
-  createdById String
-  createdBy   User        @relation("CreatedBy", fields: [createdById], references: [id])
+  id            String      @id @default(uuid())
+  total         Decimal     @db.Decimal(10, 2)
+  status        DevisStatus @default(BROUILLON)
+  clientName    String      @db.VarChar(255)
+  clientEmail   String      @db.VarChar(255)
+  clientPhone   String?     @db.VarChar(20)
+  clientAddr    String?     @db.Text
+  createdById   String
+  createdBy     User        @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
   validatedById String?
-  validatedBy   User?       @relation("ValidatedBy", fields: [validatedById], references: [id])
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  validatedBy   User?       @relation("ValidatedBy", fields: [validatedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   items DevisItem[]
 
@@ -113,7 +113,7 @@ model DevisItem {
   quantity  Int
   price     Decimal @db.Decimal(10, 2)
 
-  devis Devis @relation(fields: [devisId], references: [id])
+  devis Devis @relation(fields: [devisId], references: [id], onDelete: Cascade)
 
   @@map("devis_items")
 }
