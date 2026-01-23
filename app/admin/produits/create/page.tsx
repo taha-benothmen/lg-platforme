@@ -17,6 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { CheckCircle2, XCircle } from "lucide-react"
 
 export default function CreateProductPage() {
   const router = useRouter()
@@ -36,6 +38,7 @@ export default function CreateProductPage() {
   const [categories, setCategories] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [successMessage, setSuccessMessage] = useState("")
 
   // Charger les catégories depuis l'API
   useEffect(() => {
@@ -75,11 +78,47 @@ export default function CreateProductPage() {
     }
   }
 
-  const handleAddNewCategory = () => {
+  const handleAddNewCategory = async () => {
     if (newCategory.trim()) {
-      setForm({ ...form, category: newCategory })
-      setShowNewCategory(false)
-      setNewCategory("")
+      try {
+        console.log("📝 Creating new category:", newCategory.trim())
+        
+        // Envoyer la requête à l'API pour créer la catégorie
+        const response = await fetch("/api/categories", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: newCategory.trim() }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to create category")
+        }
+
+        const createdCategory = await response.json()
+        console.log("✅ Category created:", createdCategory)
+
+        // Ajouter la nouvelle catégorie à la liste
+        setCategories([...categories, createdCategory])
+        
+        // Sélectionner la nouvelle catégorie
+        setForm({ ...form, category: createdCategory.name })
+        setShowNewCategory(false)
+        setNewCategory("")
+        
+        // Afficher le message de succès
+        setSuccessMessage("Catégorie créée avec succès!")
+        setError("")
+        
+        // Masquer le message après 3 secondes
+        setTimeout(() => setSuccessMessage(""), 3000)
+      } catch (err: any) {
+        console.error("❌ Error creating category:", err)
+        setError(err.message || "Erreur lors de la création de la catégorie")
+        setSuccessMessage("")
+      }
     }
   }
 
@@ -87,6 +126,7 @@ export default function CreateProductPage() {
     e.preventDefault()
     setLoading(true)
     setError("")
+    setSuccessMessage("")
 
     try {
       // Préparer les données
@@ -158,6 +198,26 @@ export default function CreateProductPage() {
               className="space-y-6 w-full max-w-2xl bg-white p-6 rounded shadow"
             >
               <h1 className="text-2xl font-bold mb-6 text-center">Créer un produit</h1>
+
+              {/* Success Alert */}
+              {successMessage && (
+                <Alert className="bg-green-50 border-green-200">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800">
+                    {successMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Error Alert */}
+              {error && (
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {error}
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Product Name */}
               <div>
@@ -293,12 +353,6 @@ export default function CreateProductPage() {
                   <img src={imagePreview} alt="Preview" className="mt-2 max-h-64 object-contain border rounded" />
                 )}
               </div>
-
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                  {error}
-                </div>
-              )}
 
               <Button type="submit" className="mt-4 w-full" disabled={loading}>
                 {loading ? "Création en cours..." : "Créer le produit"}

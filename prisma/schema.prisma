@@ -3,8 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+
 }
+
+
 
 enum UserRole {
   ADMIN
@@ -41,17 +45,17 @@ model User {
 }
 
 model Category {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  products Product[]
+  // Commentez temporairement ces colonnes
+  // createdAt   DateTime  @default(now())
+  // updatedAt   DateTime  @updatedAt
+  
+  products    Product[]
 
   @@map("categories")
 }
-
 model Product {
   id          Int      @id @default(autoincrement())
   name        String

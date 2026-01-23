@@ -6,6 +6,8 @@ export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json();
 
+    console.log("🔍 Attempting login for:", email);
+
     if (!email || !password) {
       return NextResponse.json(
         { error: "Email and password are required" },
@@ -26,16 +28,34 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log("👤 User found:", user ? "Yes" : "No");
+    if (user) {
+      console.log("✅ User active:", user.isActive);
+    }
+
     if (!user || !user.isActive) {
+      console.log("❌ User not found or inactive");
       return NextResponse.json(
         { error: "Invalid credentials" },
         { status: 401 }
       );
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    // Check if password is hashed or plain text
+    let isValidPassword = false;
+    if (user.password.startsWith('$2')) {
+      // Password is hashed with bcrypt
+      isValidPassword = await bcrypt.compare(password, user.password);
+      console.log("🔐 Password valid (hashed):", isValidPassword);
+    } else {
+      // Password is plain text (NOT SECURE - fix this!)
+      isValidPassword = password === user.password;
+      console.warn("⚠️ WARNING: Password not hashed for user:", user.email);
+      console.log("🔐 Password valid (plain text):", isValidPassword);
+    }
 
     if (!isValidPassword) {
+      console.log("❌ Invalid password");
       return NextResponse.json(
         { error: "Invalid credentials" },
         { status: 401 }
@@ -54,7 +74,7 @@ export async function POST(request: NextRequest) {
       role: user.role,
       firstName: user.firstName,
       lastName: user.lastName,
-      route: routeMap[user.role],
+      route: routeMap[user.role as keyof typeof routeMap],
     };
 
     const response = NextResponse.json({
@@ -69,9 +89,10 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 24, // 24 hours
     });
 
+    console.log("✅ Login successful");
     return response;
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("💥 Login error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
