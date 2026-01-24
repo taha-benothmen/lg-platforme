@@ -51,6 +51,23 @@ async function validateUserAccess(userId: string) {
   return { valid: true, user }
 }
 
+// Get all child establishment IDs recursively
+async function getAllChildEstablishmentIds(parentId: string): Promise<string[]> {
+  const children = await prisma.etablissement.findMany({
+    where: { parentId: parentId },
+    select: { id: true },
+  })
+
+  let allIds = children.map(c => c.id)
+
+  for (const child of children) {
+    const grandchildren = await getAllChildEstablishmentIds(child.id)
+    allIds = [...allIds, ...grandchildren]
+  }
+
+  return allIds
+}
+
 // Format devis response
 function formatDevisResponse(devis: any, includeItems: boolean = false) {
   return {
@@ -65,10 +82,25 @@ function formatDevisResponse(devis: any, includeItems: boolean = false) {
     status: devis.status,
     itemsCount: devis.items?.length || 0,
     createdBy: devis.createdBy
-      ? `${devis.createdBy.firstName} ${devis.createdBy.lastName}`
+      ? {
+          id: devis.createdBy.id,
+          firstName: devis.createdBy.firstName,
+          lastName: devis.createdBy.lastName,
+          email: devis.createdBy.email,
+        }
       : null,
     validatedBy: devis.validatedBy
-      ? `${devis.validatedBy.firstName} ${devis.validatedBy.lastName}`
+      ? {
+          id: devis.validatedBy.id,
+          firstName: devis.validatedBy.firstName,
+          lastName: devis.validatedBy.lastName,
+        }
+      : null,
+    etablissement: devis.etablissement
+      ? {
+          id: devis.etablissement.id,
+          name: devis.etablissement.name,
+        }
       : null,
     createdAt: devis.createdAt,
     updatedAt: devis.updatedAt,
@@ -83,6 +115,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status")
     const devisId = searchParams.get("id")
     const userId = searchParams.get("userId")
+    const etablissementFilter = searchParams.get("etablissementId")
 
     if (!userId) {
       return NextResponse.json(
@@ -98,6 +131,34 @@ export async function GET(request: NextRequest) {
         { error: userValidation.error, success: false },
         { status: userValidation.error.includes("not found") ? 404 : 400 }
       )
+    }
+
+    const { user } = userValidation as any
+
+    // Get user's establishment info
+    const userEtab = await prisma.etablissement.findUnique({
+      where: { id: user.etablissementId },
+      select: { id: true, parentId: true },
+    })
+
+    if (!userEtab) {
+      return NextResponse.json(
+        { error: "Establishment not found", success: false },
+        { status: 404 }
+      )
+    }
+
+    // Determine which establishment IDs to query based on hierarchy
+    let etablissementIds: string[] = []
+
+    if (userEtab.parentId) {
+      // User is a child establishment - only show devis from their own establishment
+      etablissementIds = [user.etablissementId]
+    } else {
+      // User is a parent establishment - show devis from all child establishments
+      etablissementIds = [user.etablissementId]
+      const childIds = await getAllChildEstablishmentIds(user.etablissementId)
+      etablissementIds = [...etablissementIds, ...childIds]
     }
 
     // Get specific devis if ID provided
@@ -153,7 +214,8 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      if (devis.createdById !== userId) {
+      // Check if user has access to this devis
+      if (!etablissementIds.includes(devis.etablissementId)) {
         return NextResponse.json(
           { error: "Unauthorized access", success: false },
           { status: 403 }
@@ -163,10 +225,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          data: {
-            ...formatDevisResponse(devis, true),
-            etablissement: devis.etablissement,
-          },
+          data: formatDevisResponse(devis, true),
         },
         { status: 200 }
       )
@@ -174,11 +233,19 @@ export async function GET(request: NextRequest) {
 
     // Get all devis with filters
     const whereClause: any = {
-      createdById: userId,
+      etablissementId: {
+        in: etablissementIds,
+      },
     }
 
+    // Apply status filter if provided
     if (status && status !== "ALL") {
       whereClause.status = status
+    }
+
+    // Apply establishment filter if provided and user is a parent
+    if (etablissementFilter && etablissementFilter !== "ALL" && !userEtab.parentId) {
+      whereClause.etablissementId = etablissementFilter
     }
 
     const devis = await prisma.devis.findMany({
@@ -197,6 +264,7 @@ export async function GET(request: NextRequest) {
         },
         createdBy: {
           select: {
+            id: true,
             firstName: true,
             lastName: true,
             email: true,
@@ -204,8 +272,15 @@ export async function GET(request: NextRequest) {
         },
         validatedBy: {
           select: {
+            id: true,
             firstName: true,
             lastName: true,
+          },
+        },
+        etablissement: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       },
@@ -390,6 +465,12 @@ export async function POST(request: NextRequest) {
             email: true,
           },
         },
+        etablissement: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     })
 
@@ -520,6 +601,7 @@ export async function PUT(request: NextRequest) {
             id: true,
             firstName: true,
             lastName: true,
+            email: true,
           },
         },
         validatedBy: {
@@ -527,6 +609,12 @@ export async function PUT(request: NextRequest) {
             id: true,
             firstName: true,
             lastName: true,
+          },
+        },
+        etablissement: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       },

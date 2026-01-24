@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const type = searchParams.get("type")
   const parentId = searchParams.get("parentId")
+  const userId = searchParams.get("userId")
 
   // Si type=users, retourner les utilisateurs
   if (type === "users") {
@@ -30,23 +31,113 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Retourner les établissements (avec filtrage optionnel par parent)
+  // Logique hiérarchique pour les établissements
   try {
-    const whereClause: any = {}
-    if (parentId) {
-      whereClause.parentId = parentId
+    // Si parentId est fourni, retourner les enfants de ce parent
+    if (parentId && parentId !== "null") {
+      const etablissements = await prisma.etablissement.findMany({
+        where: {
+          parentId: parentId,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      })
+
+      const etablissementsWithData = await Promise.all(
+        etablissements.map(async (etab) => {
+          const usersCount = await prisma.user.count({
+            where: { etablissementId: etab.id },
+          })
+          const childrenCount = await prisma.etablissement.count({
+            where: { parentId: etab.id },
+          })
+          
+          return {
+            ...etab,
+            _count: {
+              users: usersCount,
+              children: childrenCount,
+            },
+          }
+        })
+      )
+
+      return NextResponse.json(etablissementsWithData)
     }
-    
-    const etablissements = await prisma.etablissement.findMany({
-      where: whereClause,
+
+    // Si userId est fourni, récupérer l'établissement de l'utilisateur et sa logique
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { etablissementId: true },
+      })
+
+      if (!user || !user.etablissementId) {
+        return NextResponse.json([])
+      }
+
+      const userEtab = await prisma.etablissement.findUnique({
+        where: { id: user.etablissementId },
+        select: { id: true, name: true, parentId: true },
+      })
+
+      if (!userEtab) {
+        return NextResponse.json([])
+      }
+
+      // Si l'utilisateur a un parentId (c'est un enfant), retourner seulement son établissement
+      if (userEtab.parentId) {
+        return NextResponse.json([
+          {
+            id: userEtab.id,
+            name: userEtab.name,
+            parentId: userEtab.parentId,
+          },
+        ])
+      }
+
+      // Si l'utilisateur n'a pas de parentId (c'est un parent), retourner tous ses enfants
+      const childEtablissements = await prisma.etablissement.findMany({
+        where: {
+          parentId: userEtab.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      })
+
+      const etablissementsWithData = await Promise.all(
+        childEtablissements.map(async (etab) => {
+          const usersCount = await prisma.user.count({
+            where: { etablissementId: etab.id },
+          })
+          const childrenCount = await prisma.etablissement.count({
+            where: { parentId: etab.id },
+          })
+          
+          return {
+            ...etab,
+            _count: {
+              users: usersCount,
+              children: childrenCount,
+            },
+          }
+        })
+      )
+
+      return NextResponse.json(etablissementsWithData)
+    }
+
+    // Par défaut, retourner tous les établissements
+    const allEtablissements = await prisma.etablissement.findMany({
       orderBy: {
         createdAt: "desc",
       },
     })
 
-    // Ajouter les comptages séparément
     const etablissementsWithData = await Promise.all(
-      etablissements.map(async (etab) => {
+      allEtablissements.map(async (etab) => {
         const usersCount = await prisma.user.count({
           where: { etablissementId: etab.id },
         })
