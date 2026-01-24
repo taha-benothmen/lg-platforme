@@ -2,13 +2,13 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { Decimal } from "@prisma/client/runtime/library"
 
-// Helper function to validate user access
+/* ================= Helpers ================= */
+
 async function validateUserAccess(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, etablissementId: true },
+    select: { id: true, etablissementId: true, role: true },
   })
 
   if (!user) {
@@ -22,7 +22,6 @@ async function validateUserAccess(userId: string) {
   return { valid: true, user }
 }
 
-// Helper function to format devis response
 function formatDevisResponse(devis: any) {
   return {
     id: devis.id,
@@ -80,12 +79,23 @@ function formatDevisResponse(devis: any) {
   }
 }
 
-// GET - Récupérer un devis spécifique
+/* ================= GET ================= */
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await params as it's now a Promise in Next.js 15+
+    const { id } = await params
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID du devis manquant", success: false },
+        { status: 400 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get("userId")
 
@@ -96,7 +106,6 @@ export async function GET(
       )
     }
 
-    // Validate user
     const userValidation = await validateUserAccess(userId)
     if (!userValidation.valid) {
       return NextResponse.json(
@@ -106,7 +115,7 @@ export async function GET(
     }
 
     const devis = await prisma.devis.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         items: {
           include: {
@@ -157,8 +166,8 @@ export async function GET(
       )
     }
 
-    // Verify user has access to this devis
-    if (devis.createdById !== userId) {
+    // Check if user has access to this devis (same establishment)
+    if (devis.etablissementId !== userValidation.user.etablissementId) {
       return NextResponse.json(
         { error: "Accès non autorisé", success: false },
         { status: 403 }
@@ -166,14 +175,11 @@ export async function GET(
     }
 
     return NextResponse.json(
-      {
-        success: true,
-        data: formatDevisResponse(devis),
-      },
+      { success: true, data: formatDevisResponse(devis) },
       { status: 200 }
     )
   } catch (error) {
-    console.error("Erreur lors de la récupération du devis:", error)
+    console.error("Error fetching devis:", error)
     return NextResponse.json(
       { error: "Erreur serveur", success: false },
       { status: 500 }
@@ -181,23 +187,34 @@ export async function GET(
   }
 }
 
-// PUT - Mettre à jour un devis
+/* ================= PUT ================= */
+
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const body = await request.json()
-    const { userId, status, validatedById } = body
+    // Await params as it's now a Promise in Next.js 15+
+    const { id } = await params
 
-    if (!userId || !status) {
+    if (!id) {
       return NextResponse.json(
-        { error: "userId et status sont obligatoires", success: false },
+        { error: "ID du devis manquant", success: false },
         { status: 400 }
       )
     }
 
-    // Validate user
+    const body = await request.json()
+    const { userId, status } = body
+
+    if (!userId || !status) {
+      return NextResponse.json(
+        { error: "userId et status obligatoires", success: false },
+        { status: 400 }
+      )
+    }
+
+    // Validate user exists and has an establishment
     const userValidation = await validateUserAccess(userId)
     if (!userValidation.valid) {
       return NextResponse.json(
@@ -206,6 +223,7 @@ export async function PUT(
       )
     }
 
+    // Validate status
     const validStatuses = [
       "BROUILLON",
       "ENVOYE",
@@ -214,20 +232,22 @@ export async function PUT(
       "REJETE",
       "ACCEPTE",
     ]
+
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
-        {
-          error: `Statut invalide. Statuts valides: ${validStatuses.join(", ")}`,
-          success: false,
-        },
+        { error: "Statut invalide", success: false },
         { status: 400 }
       )
     }
 
-    // Verify that the devis exists
+    // Fetch devis with all necessary data
     const devis = await prisma.devis.findUnique({
-      where: { id: params.id },
-      select: { createdById: true, status: true },
+      where: { id },
+      select: {
+        id: true,
+        etablissementId: true,
+        status: true,
+      },
     })
 
     if (!devis) {
@@ -237,39 +257,20 @@ export async function PUT(
       )
     }
 
-    // Verify ownership
-    if (devis.createdById !== userId) {
+    // Check if user has access to this devis (same establishment)
+    if (devis.etablissementId !== userValidation.user.etablissementId) {
       return NextResponse.json(
         { error: "Accès non autorisé", success: false },
         { status: 403 }
       )
     }
 
-    // Validate status transition
-    const validTransitions: Record<string, string[]> = {
-      BROUILLON: ["ENVOYE", "REJETE"],
-      ENVOYE: ["APPROUVE", "SUSPENDU", "REJETE"],
-      APPROUVE: ["ACCEPTE", "SUSPENDU"],
-      SUSPENDU: ["ENVOYE", "REJETE"],
-      REJETE: [],
-      ACCEPTE: [],
-    }
-
-    if (!validTransitions[devis.status]?.includes(status)) {
-      return NextResponse.json(
-        {
-          error: `Transition de statut invalide: ${devis.status} → ${status}`,
-          success: false,
-        },
-        { status: 400 }
-      )
-    }
-
+    // Update the devis
     const updatedDevis = await prisma.devis.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         status,
-        validatedById: validatedById || undefined,
+        validatedById: userId,
         updatedAt: new Date(),
       },
       include: {
@@ -323,21 +324,32 @@ export async function PUT(
       },
       { status: 200 }
     )
-  } catch (error) {
-    console.error("Erreur lors de la mise à jour du devis:", error)
+  } catch (error: any) {
+    console.error("Error updating devis:", error)
     return NextResponse.json(
-      { error: "Erreur serveur", success: false },
+      { error: error.message || "Erreur serveur", success: false },
       { status: 500 }
     )
   }
 }
 
-// DELETE - Supprimer un devis
+/* ================= DELETE ================= */
+
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await params as it's now a Promise in Next.js 15+
+    const { id } = await params
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID du devis manquant", success: false },
+        { status: 400 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get("userId")
 
@@ -348,7 +360,6 @@ export async function DELETE(
       )
     }
 
-    // Validate user
     const userValidation = await validateUserAccess(userId)
     if (!userValidation.valid) {
       return NextResponse.json(
@@ -358,8 +369,11 @@ export async function DELETE(
     }
 
     const devis = await prisma.devis.findUnique({
-      where: { id: params.id },
-      select: { status: true, createdById: true },
+      where: { id },
+      select: {
+        status: true,
+        etablissementId: true,
+      },
     })
 
     if (!devis) {
@@ -369,15 +383,13 @@ export async function DELETE(
       )
     }
 
-    // Verify ownership
-    if (devis.createdById !== userId) {
+    if (devis.etablissementId !== userValidation.user.etablissementId) {
       return NextResponse.json(
         { error: "Accès non autorisé", success: false },
         { status: 403 }
       )
     }
 
-    // Seuls les devis en brouillon peuvent être supprimés
     if (devis.status !== "BROUILLON") {
       return NextResponse.json(
         {
@@ -389,18 +401,15 @@ export async function DELETE(
     }
 
     await prisma.devis.delete({
-      where: { id: params.id },
+      where: { id },
     })
 
     return NextResponse.json(
-      {
-        success: true,
-        message: "Devis supprimé avec succès",
-      },
+      { success: true, message: "Devis supprimé avec succès" },
       { status: 200 }
     )
   } catch (error) {
-    console.error("Erreur lors de la suppression du devis:", error)
+    console.error("Error deleting devis:", error)
     return NextResponse.json(
       { error: "Erreur serveur", success: false },
       { status: 500 }

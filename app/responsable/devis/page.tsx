@@ -11,12 +11,12 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog"
 import {
   FileText,
@@ -27,6 +27,9 @@ import {
   Filter,
   Plus,
   Loader2,
+  AlertCircle,
+  CheckCircle2,
+  X,
 } from "lucide-react"
 import {
   Select,
@@ -60,6 +63,13 @@ type DevisItem = {
   }>
 }
 
+type AlertType = {
+  show: boolean
+  type: "default" | "destructive" | "success"
+  title: string
+  description: string
+}
+
 const STATUS_COLORS: Record<string, { label: string; variant: string }> = {
   BROUILLON: { label: "Brouillon", variant: "secondary" },
   ENVOYE: { label: "Envoyé", variant: "outline" },
@@ -79,6 +89,19 @@ export default function DevisPage() {
   const [userId, setUserId] = useState<string>("")
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [alert, setAlert] = useState<AlertType>({
+    show: false,
+    type: "default",
+    title: "",
+    description: ""
+  })
+
+  const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
+    setAlert({ show: true, type, title, description })
+    setTimeout(() => {
+      setAlert(prev => ({ ...prev, show: false }))
+    }, 5000)
+  }
 
   // Load devis on mount
   useEffect(() => {
@@ -97,15 +120,14 @@ export default function DevisPage() {
       const currentUserId = localStorage.getItem("userId")
 
       if (!currentUserId) {
-        alert("User ID not found. Please log in again.")
-        router.push("/login")
+        showAlert("destructive", "Erreur d'authentification", "ID utilisateur introuvable. Veuillez vous reconnecter.")
+        setTimeout(() => router.push("/login"), 2000)
         return
       }
 
       setUserId(currentUserId)
       setLoading(true)
 
-      // Fetch devis from API
       const url = new URL("/api/devis", window.location.origin)
       url.searchParams.set("userId", currentUserId)
       if (statusFilter !== "ALL") {
@@ -122,7 +144,7 @@ export default function DevisPage() {
       setDevis(result.data || [])
     } catch (error) {
       console.error("Error loading devis:", error)
-      alert("Failed to load devis")
+      showAlert("destructive", "Erreur", "Impossible de charger les devis")
     } finally {
       setLoading(false)
     }
@@ -138,77 +160,149 @@ export default function DevisPage() {
   })
 
   const handleDeleteDevis = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this devis?")) {
+    if (!userId) {
+      showAlert("destructive", "Erreur", "User ID non trouvé")
+      return
+    }
+
+    const confirmed = window.confirm("Êtes-vous sûr de vouloir supprimer ce devis ?")
+    
+    if (!confirmed) {
       return
     }
 
     setDeleting(true)
     try {
+      console.log("Deleting devis:", { id, userId })
+
       const response = await fetch(
-        `/api/devis?id=${id}&userId=${userId}`,
+        `/api/devis/${id}?userId=${userId}`,
         {
           method: "DELETE",
         }
       )
 
+      const result = await response.json()
+      console.log("Delete response:", result)
+
       if (!response.ok) {
-        throw new Error("Failed to delete devis")
+        throw new Error(result.error || "Failed to delete devis")
       }
 
+      // Remove from local state
       setDevis((prev) => prev.filter((d) => d.id !== id))
       setSelectedDevis(null)
-      alert("Devis deleted successfully")
-    } catch (error) {
+      showAlert("success", "Suppression réussie", "Le devis a été supprimé avec succès")
+    } catch (error: any) {
       console.error("Error deleting devis:", error)
-      alert("Failed to delete devis")
+      showAlert("destructive", "Erreur", error.message || "Impossible de supprimer le devis")
     } finally {
       setDeleting(false)
     }
   }
 
   const handleUpdateStatus = async (id: string, status: string) => {
+    if (!userId) {
+      showAlert("destructive", "Erreur", "User ID non trouvé")
+      return
+    }
+
     setUpdatingStatus(true)
     try {
-      const response = await fetch("/api/devis", {
+      console.log("Updating devis:", { id, userId, status })
+
+      const response = await fetch(`/api/devis/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          devisId: id,
           userId: userId,
           status: status,
         }),
       })
 
+      const result = await response.json()
+      console.log("Update response:", result)
+
       if (!response.ok) {
-        throw new Error("Failed to update devis status")
+        throw new Error(result.error || "Failed to update devis status")
       }
 
-      // Update local state
+      // Update local state with the returned data
       setDevis((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, status: status as any } : d))
+        prev.map((d) => (d.id === id ? { ...d, status: status as any, updatedAt: new Date().toISOString() } : d))
       )
 
       if (selectedDevis) {
-        setSelectedDevis({ ...selectedDevis, status: status as any })
+        setSelectedDevis({ ...selectedDevis, status: status as any, updatedAt: new Date().toISOString() })
       }
 
-      alert("Devis updated successfully")
-    } catch (error) {
+      const statusLabels: Record<string, string> = {
+        APPROUVE: "approuvé",
+        SUSPENDU: "suspendu",
+        REJETE: "rejeté",
+        ENVOYE: "envoyé",
+        ACCEPTE: "accepté",
+      }
+
+      showAlert("success", "Mise à jour réussie", `Le devis a été ${statusLabels[status] || status.toLowerCase()} avec succès`)
+    } catch (error: any) {
       console.error("Error updating devis:", error)
-      alert("Failed to update devis")
+      showAlert("destructive", "Erreur", error.message || "Impossible de mettre à jour le devis")
     } finally {
       setUpdatingStatus(false)
     }
   }
 
-  const handleCreateNewDevis = () => {
-    router.push("/responsable/devis/create")
+  const handleDownloadPDF = async (devisData: DevisItem) => {
+    try {
+      showAlert("default", "Téléchargement", "Génération du PDF en cours...")
+      
+      // TODO: Implement PDF generation
+      console.log("Downloading PDF for devis:", devisData.id)
+      
+      // Simulate PDF download
+      setTimeout(() => {
+        showAlert("success", "Téléchargement réussi", "Le PDF a été téléchargé")
+      }, 1500)
+    } catch (error) {
+      console.error("Error downloading PDF:", error)
+      showAlert("destructive", "Erreur", "Impossible de télécharger le PDF")
+    }
+  }
+  
+
+  const handleShareDevis = async (devisData: DevisItem) => {
+    try {
+      const shareText = `Devis ${devisData.id}\nClient: ${devisData.clientName}\nTotal: ${parseFloat(devisData.total).toFixed(2)} TND`
+      
+      if (navigator.share) {
+        await navigator.share({
+          title: `Devis ${devisData.id}`,
+          text: shareText,
+        })
+        showAlert("success", "Partage réussi", "Le devis a été partagé")
+      } else {
+        await navigator.clipboard.writeText(shareText)
+        showAlert("success", "Lien copié", "Les informations du devis ont été copiées dans le presse-papiers")
+      }
+    } catch (error) {
+      console.error("Error sharing devis:", error)
+      showAlert("destructive", "Erreur", "Impossible de partager le devis")
+    }
   }
 
-  const handleViewDevis = (devisId: string) => {
-    router.push(`/responsable/devis/${devisId}`)
+  const handleCreateNewDevis = () => {
+    // Assurez-vous que l'userId est dans localStorage avant de naviguer
+    const currentUserId = localStorage.getItem("userId")
+    if (!currentUserId) {
+      showAlert("destructive", "Erreur", "ID utilisateur non trouvé")
+      return
+    }
+    
+    // L'userId sera disponible quand la page créer devis se charge
+    router.push("/responsable/devis/create")
   }
 
   return (
@@ -225,6 +319,26 @@ export default function DevisPage() {
           <SiteHeader />
 
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 lg:px-8 space-y-6">
+            {/* Alert notification */}
+            {alert.show && (
+              <div className="fixed top-4 right-4 z-50 w-96 animate-in slide-in-from-top-2">
+                <Alert variant={alert.type === "success" ? "default" : alert.type} className="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-2 h-6 w-6"
+                    onClick={() => setAlert(prev => ({ ...prev, show: false }))}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                  {alert.type === "destructive" && <AlertCircle className="h-4 w-4" />}
+                  {alert.type === "success" && <CheckCircle2 className="h-4 w-4" />}
+                  <AlertTitle>{alert.title}</AlertTitle>
+                  <AlertDescription>{alert.description}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <h1 className="text-2xl font-bold">Devis</h1>
 
@@ -314,10 +428,26 @@ export default function DevisPage() {
                         <p className="font-bold text-lg shrink-0">
                           {parseFloat(d.total).toFixed(2)} TND
                         </p>
-                        <Button size="icon" variant="outline" className="shrink-0">
+                        <Button 
+                          size="icon" 
+                          variant="outline" 
+                          className="shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDownloadPDF(d)
+                          }}
+                        >
                           <Download className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="outline" className="shrink-0">
+                        <Button 
+                          size="icon" 
+                          variant="outline" 
+                          className="shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleShareDevis(d)
+                          }}
+                        >
                           <Send className="h-4 w-4" />
                         </Button>
                       </div>
@@ -431,6 +561,28 @@ export default function DevisPage() {
 
               {/* FOOTER FIXED */}
               <div className="px-6 py-4 border-t space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleDownloadPDF(selectedDevis)}
+                    disabled={updatingStatus || deleting}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Télécharger PDF
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleShareDevis(selectedDevis)}
+                    disabled={updatingStatus || deleting}
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Partager
+                  </Button>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
                   <Button
                     variant="secondary"
@@ -438,7 +590,7 @@ export default function DevisPage() {
                     onClick={() =>
                       handleUpdateStatus(selectedDevis.id, "APPROUVE")
                     }
-                    disabled={updatingStatus}
+                    disabled={updatingStatus || deleting}
                   >
                     {updatingStatus ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -452,7 +604,7 @@ export default function DevisPage() {
                     onClick={() =>
                       handleUpdateStatus(selectedDevis.id, "SUSPENDU")
                     }
-                    disabled={updatingStatus}
+                    disabled={updatingStatus || deleting}
                   >
                     {updatingStatus ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -466,7 +618,7 @@ export default function DevisPage() {
                     onClick={() =>
                       handleUpdateStatus(selectedDevis.id, "REJETE")
                     }
-                    disabled={updatingStatus}
+                    disabled={updatingStatus || deleting}
                   >
                     {updatingStatus ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -475,20 +627,12 @@ export default function DevisPage() {
                   </Button>
                 </div>
 
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleViewDevis(selectedDevis.id)}
-                >
-                  Voir les détails complets
-                </Button>
-
                 {selectedDevis.status === "BROUILLON" && (
                   <Button
                     variant="destructive"
                     className="w-full"
                     onClick={() => handleDeleteDevis(selectedDevis.id)}
-                    disabled={deleting}
+                    disabled={deleting || updatingStatus}
                   >
                     {deleting ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />

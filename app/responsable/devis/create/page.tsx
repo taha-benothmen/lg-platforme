@@ -14,8 +14,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { menusByRole } from "@/lib/data/menus"
-import { FileText, ShoppingCart, Download, Share2, ArrowLeft, Loader2 } from "lucide-react"
+import { FileText, ShoppingCart, Download, Share2, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Info, X } from "lucide-react"
 
 type CartItem = {
   id: number
@@ -41,6 +42,13 @@ type ClientInfo = {
   notes: string
 }
 
+type AlertType = {
+  show: boolean
+  type: "default" | "destructive" | "success"
+  title: string
+  description: string
+}
+
 export default function CreerDevisPage() {
   const router = useRouter()
   
@@ -51,6 +59,12 @@ export default function CreerDevisPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [categories, setCategories] = useState<any[]>([])
   const [userId, setUserId] = useState<string>("")
+  const [alert, setAlert] = useState<AlertType>({
+    show: false,
+    type: "default",
+    title: "",
+    description: ""
+  })
   const [clientInfo, setClientInfo] = useState<ClientInfo>({
     nom: "",
     prenom: "",
@@ -62,6 +76,14 @@ export default function CreerDevisPage() {
     ville: "",
     notes: ""
   })
+
+  const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
+    setAlert({ show: true, type, title, description })
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      setAlert(prev => ({ ...prev, show: false }))
+    }, 5000)
+  }
 
   // Load user ID and data on mount
   useEffect(() => {
@@ -76,8 +98,8 @@ export default function CreerDevisPage() {
         }
 
         if (!currentUserId) {
-          alert("User ID not found. Please log in again.")
-          router.push("/login")
+          showAlert("destructive", "Erreur d'authentification", "ID utilisateur introuvable. Veuillez vous reconnecter.")
+          setTimeout(() => router.push("/login"), 2000)
           return
         }
 
@@ -191,7 +213,7 @@ export default function CreerDevisPage() {
   // Download PDF
   const handleDownloadPDF = () => {
     if (!isFormValid()) {
-      alert("Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
+      showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
       return
     }
 
@@ -209,13 +231,13 @@ export default function CreerDevisPage() {
     }
 
     console.log("Quote data for PDF:", quoteData)
-    alert("PDF download in progress...")
+    showAlert("default", "Téléchargement PDF", "Le téléchargement du PDF est en cours...")
   }
 
   // Share quote
   const handleShareQuote = () => {
     if (!isFormValid()) {
-      alert("Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
+      showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
       return
     }
 
@@ -232,7 +254,7 @@ export default function CreerDevisPage() {
       })
     } else {
       navigator.clipboard.writeText(shareText)
-      alert("Quote link copied to clipboard!")
+      showAlert("success", "Lien copié", "Le lien du devis a été copié dans le presse-papiers!")
     }
   }
 
@@ -240,21 +262,21 @@ export default function CreerDevisPage() {
   const handleGenerateQuote = async () => {
     // Check userId
     if (!userId) {
-      alert("User ID not found. Please log in again.")
-      router.push("/login")
+      showAlert("destructive", "Erreur d'authentification", "ID utilisateur introuvable. Veuillez vous reconnecter.")
+      setTimeout(() => router.push("/login"), 2000)
       return
     }
 
     setIsSubmitting(true)
 
     if (!isFormValid()) {
-      alert("Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
+      showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
       setIsSubmitting(false)
       return
     }
 
     const quoteData = {
-      userId: userId, // ✅ Use userId from localStorage/sessionStorage
+      userId: userId,
       client: clientInfo,
       products: Array.from(selectedProducts.entries()).map(([id, quantity]) => {
         const product = allProducts.find((p) => p.id === id)
@@ -288,22 +310,22 @@ export default function CreerDevisPage() {
 
       if (!response.ok) {
         console.error("API error response:", result)
-        alert(`Erreur: ${result.error || 'Erreur inconnue'}`)
+        showAlert("destructive", "Erreur", result.error || 'Erreur inconnue lors de la création du devis')
         setIsSubmitting(false)
         return
       }
 
       // Success
-      alert(`Devis créé avec succès!\nNom du client: ${result.data.clientName}\nTotal: ${result.data.total} TND`)
+      showAlert("success", "Succès", `Devis créé avec succès! Nom du client: ${result.data.clientName} - Total: ${result.data.total} TND`)
       localStorage.removeItem("cart")
       
-      // Redirect after 1 second
+      // Redirect after 2 seconds
       setTimeout(() => {
         router.push('/responsable/devis')
-      }, 1000)
+      }, 2000)
     } catch (error) {
       console.error('Error creating quote:', error)
-      alert('Erreur lors de la création du devis')
+      showAlert("destructive", "Erreur", "Une erreur est survenue lors de la création du devis")
       setIsSubmitting(false)
     }
   }
@@ -348,6 +370,27 @@ export default function CreerDevisPage() {
           <SiteHeader />
 
           <div className="flex-1 overflow-y-auto px-6 py-4 lg:px-8">
+            {/* Alert notification */}
+            {alert.show && (
+              <div className="fixed top-4 right-4 z-50 w-96 animate-in slide-in-from-top-2">
+                <Alert variant={alert.type === "success" ? "default" : alert.type} className="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-2 h-6 w-6"
+                    onClick={() => setAlert(prev => ({ ...prev, show: false }))}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                  {alert.type === "destructive" && <AlertCircle className="h-4 w-4" />}
+                  {alert.type === "success" && <CheckCircle2 className="h-4 w-4" />}
+                  {alert.type === "default" && <Info className="h-4 w-4" />}
+                  <AlertTitle>{alert.title}</AlertTitle>
+                  <AlertDescription>{alert.description}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -615,7 +658,7 @@ export default function CreerDevisPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="ville">Ville</Label>
+                        <Label htmlFor="ville">Ville *</Label>
                         <Input
                           id="ville"
                           value={clientInfo.ville}

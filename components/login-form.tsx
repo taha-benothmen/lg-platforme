@@ -26,6 +26,8 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     setError("")
 
     try {
+      console.log("📝 Login attempt avec email:", email)
+      
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -35,6 +37,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
       })
 
       const data = await response.json()
+      console.log("📦 Réponse de l'API:", data)
 
       if (!response.ok) {
         setError(data.error || "Login failed")
@@ -42,19 +45,51 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
         return
       }
 
-      // ✅ Sauvegarder la session complète dans localStorage
-      console.log("💾 Sauvegarde des données utilisateur:", data.user)
-      localStorage.setItem("userSession", JSON.stringify(data.user))
-
-      // ✅ Sauvegarder userId spécifiquement pour les devis
-      if (data.user.id) {
-        localStorage.setItem("userId", data.user.id)
-        console.log("✅ userId sauvegardé:", data.user.id)
+      // ✅ Vérifier que data.user existe
+      if (!data.user) {
+        console.error("❌ ERREUR: data.user est undefined!")
+        setError("Invalid server response: missing user data")
+        setLoading(false)
+        return
       }
 
-      // ✅ Sauvegarder le rôle et l'email
+      console.log("✅ Données utilisateur reçues:", data.user)
+
+      // ✅ Sauvegarder dans localStorage
+      const userSession = {
+        id: data.user.id || data.user.userId,
+        email: data.user.email,
+        role: data.user.role,
+        route: data.user.route,
+        name: data.user.name || data.user.firstName,
+      }
+      
+      localStorage.setItem("userSession", JSON.stringify(userSession))
+      localStorage.setItem("userId", data.user.id || data.user.userId)
       localStorage.setItem("userRole", data.user.role || "")
       localStorage.setItem("userEmail", data.user.email || "")
+
+      console.log("✅ localStorage mis à jour")
+
+      // ✅ IMPORTANT: Sauvegarder les cookies pour le middleware
+      // Le middleware cherche 'lg_user_role' dans les cookies
+      const role = data.user.role
+
+      // Créer les cookies manuellement (car on ne peut pas accéder à res en client)
+      // On va faire un appel à l'API pour setter les cookies
+      await fetch("/api/auth/set-cookies", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: data.user.id || data.user.userId,
+          role: role,
+          email: data.user.email,
+        }),
+      })
+
+      console.log("✅ Cookies mis à jour")
 
       // Save session in authUtils
       authUtils.setSession({
@@ -65,8 +100,9 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 
       console.log("✅ Redirection vers:", data.user.route)
       
-      // Redirect after a short delay to ensure localStorage is set
+      // Redirect after a short delay to ensure cookies are set
       setTimeout(() => {
+        console.log("🔄 Navigation vers:", data.user.route)
         router.push(data.user.route)
       }, 100)
     } catch (err) {
@@ -80,7 +116,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
-          {/* Attach handleSubmit here */}
           <form onSubmit={handleSubmit} className="p-6 md:p-8">
             <FieldGroup>
               <div className="flex flex-col items-center gap-2 text-center">
@@ -135,7 +170,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
             </FieldGroup>
           </form>
 
-          {/* Image side remains unchanged */}
           <div className="bg-muted relative hidden md:block flex items-center justify-center">
             <img
               src="/lg.png"
