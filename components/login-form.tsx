@@ -38,20 +38,40 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 
       if (!response.ok) {
         setError(data.error || "Login failed")
+        setLoading(false)
         return
       }
 
-      // Save session in localStorage
+      // ✅ Sauvegarder la session complète dans localStorage
+      console.log("💾 Sauvegarde des données utilisateur:", data.user)
+      localStorage.setItem("userSession", JSON.stringify(data.user))
+
+      // ✅ Sauvegarder userId spécifiquement pour les devis
+      if (data.user.id) {
+        localStorage.setItem("userId", data.user.id)
+        console.log("✅ userId sauvegardé:", data.user.id)
+      }
+
+      // ✅ Sauvegarder le rôle et l'email
+      localStorage.setItem("userRole", data.user.role || "")
+      localStorage.setItem("userEmail", data.user.email || "")
+
+      // Save session in authUtils
       authUtils.setSession({
         email: data.user.email,
         role: data.user.role,
         route: data.user.route,
       })
 
-      router.push(data.user.route)
+      console.log("✅ Redirection vers:", data.user.route)
+      
+      // Redirect after a short delay to ensure localStorage is set
+      setTimeout(() => {
+        router.push(data.user.route)
+      }, 100)
     } catch (err) {
       setError("An error occurred. Please try again.")
-    } finally {
+      console.error("❌ Erreur:", err)
       setLoading(false)
     }
   }
@@ -79,6 +99,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
                 />
               </Field>
 
@@ -98,6 +119,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
                 />
               </Field>
 
@@ -110,8 +132,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   {loading ? "Logging in..." : "Login"}
                 </Button>
               </Field>
-
-              
             </FieldGroup>
           </form>
 
@@ -125,8 +145,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
           </div>
         </CardContent>
       </Card>
-
-      
     </div>
   )
 }

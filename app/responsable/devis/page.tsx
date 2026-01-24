@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
@@ -24,6 +25,8 @@ import {
   Trash2,
   Search,
   Filter,
+  Plus,
+  Loader2,
 } from "lucide-react"
 import {
   Select,
@@ -32,53 +35,180 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { getStatusBadgeVariant, getStatusLabel } from "@/lib/status-utils"
-import { updateDevisStatus, deleteDevis, getDevisList } from "@/app/actions/devis"
+
+type DevisItem = {
+  id: string
+  clientName: string
+  clientEmail: string
+  clientPhone?: string
+  clientAddr?: string
+  total: string
+  status: "BROUILLON" | "ENVOYE" | "APPROUVE" | "SUSPENDU" | "REJETE" | "ACCEPTE"
+  createdAt: string
+  updatedAt: string
+  itemsCount: number
+  createdBy?: string
+  items?: Array<{
+    id: string
+    quantity: number
+    price: string
+    product?: {
+      id: number
+      name: string
+      description?: string
+    }
+  }>
+}
+
+const STATUS_COLORS: Record<string, { label: string; variant: string }> = {
+  BROUILLON: { label: "Brouillon", variant: "secondary" },
+  ENVOYE: { label: "Envoyé", variant: "outline" },
+  APPROUVE: { label: "Approuvé", variant: "default" },
+  SUSPENDU: { label: "Suspendu", variant: "destructive" },
+  REJETE: { label: "Rejeté", variant: "destructive" },
+  ACCEPTE: { label: "Accepté", variant: "default" },
+}
 
 export default function DevisPage() {
-  const [devis, setDevis] = useState<any[]>([])
+  const router = useRouter()
+  const [devis, setDevis] = useState<DevisItem[]>([])
   const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [selectedDevis, setSelectedDevis] = useState<any>(null)
+  const [statusFilter, setStatusFilter] = useState("ALL")
+  const [selectedDevis, setSelectedDevis] = useState<DevisItem | null>(null)
   const [loading, setLoading] = useState(true)
+  const [userId, setUserId] = useState<string>("")
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
+  // Load devis on mount
   useEffect(() => {
-    async function loadDevis() {
-      const result = await getDevisList("RESPONSABLE")
-      if (result.success) {
-        setDevis(result.devis || [])
-      }
-      setLoading(false)
-    }
     loadDevis()
   }, [])
+
+  // Reload when status filter changes
+  useEffect(() => {
+    if (userId) {
+      loadDevis()
+    }
+  }, [statusFilter])
+
+  const loadDevis = async () => {
+    try {
+      const currentUserId = localStorage.getItem("userId")
+
+      if (!currentUserId) {
+        alert("User ID not found. Please log in again.")
+        router.push("/login")
+        return
+      }
+
+      setUserId(currentUserId)
+      setLoading(true)
+
+      // Fetch devis from API
+      const url = new URL("/api/devis", window.location.origin)
+      url.searchParams.set("userId", currentUserId)
+      if (statusFilter !== "ALL") {
+        url.searchParams.set("status", statusFilter)
+      }
+
+      const response = await fetch(url.toString())
+
+      if (!response.ok) {
+        throw new Error("Failed to load devis")
+      }
+
+      const result = await response.json()
+      setDevis(result.data || [])
+    } catch (error) {
+      console.error("Error loading devis:", error)
+      alert("Failed to load devis")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredDevis = devis.filter((d) => {
     const matchesSearch =
       d.id.toLowerCase().includes(search.toLowerCase()) ||
-      d.clientName.toLowerCase().includes(search.toLowerCase())
-    
-    const matchesStatus = statusFilter === "all" || d.status === statusFilter
+      d.clientName.toLowerCase().includes(search.toLowerCase()) ||
+      d.clientEmail.toLowerCase().includes(search.toLowerCase())
 
-    return matchesSearch && matchesStatus
+    return matchesSearch
   })
 
   const handleDeleteDevis = async (id: string) => {
-    const result = await deleteDevis(id)
-    if (result.success) {
+    if (!confirm("Are you sure you want to delete this devis?")) {
+      return
+    }
+
+    setDeleting(true)
+    try {
+      const response = await fetch(
+        `/api/devis?id=${id}&userId=${userId}`,
+        {
+          method: "DELETE",
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to delete devis")
+      }
+
       setDevis((prev) => prev.filter((d) => d.id !== id))
       setSelectedDevis(null)
+      alert("Devis deleted successfully")
+    } catch (error) {
+      console.error("Error deleting devis:", error)
+      alert("Failed to delete devis")
+    } finally {
+      setDeleting(false)
     }
   }
 
   const handleUpdateStatus = async (id: string, status: string) => {
-    const result = await updateDevisStatus(id, status)
-    if (result.success) {
+    setUpdatingStatus(true)
+    try {
+      const response = await fetch("/api/devis", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          devisId: id,
+          userId: userId,
+          status: status,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to update devis status")
+      }
+
+      // Update local state
       setDevis((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, status } : d))
+        prev.map((d) => (d.id === id ? { ...d, status: status as any } : d))
       )
-      setSelectedDevis((prev: any) => ({ ...prev, status }))
+
+      if (selectedDevis) {
+        setSelectedDevis({ ...selectedDevis, status: status as any })
+      }
+
+      alert("Devis updated successfully")
+    } catch (error) {
+      console.error("Error updating devis:", error)
+      alert("Failed to update devis")
+    } finally {
+      setUpdatingStatus(false)
     }
+  }
+
+  const handleCreateNewDevis = () => {
+    router.push("/responsable/devis/create")
+  }
+
+  const handleViewDevis = (devisId: string) => {
+    router.push(`/responsable/devis/${devisId}`)
   }
 
   return (
@@ -105,11 +235,13 @@ export default function DevisPage() {
                     <SelectValue placeholder="Filtrer par statut" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="ALL">Tous les statuts</SelectItem>
+                    <SelectItem value="BROUILLON">Brouillon</SelectItem>
                     <SelectItem value="ENVOYE">Envoyé</SelectItem>
                     <SelectItem value="APPROUVE">Approuvé</SelectItem>
                     <SelectItem value="SUSPENDU">Suspendu</SelectItem>
                     <SelectItem value="REJETE">Rejeté</SelectItem>
+                    <SelectItem value="ACCEPTE">Accepté</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -122,23 +254,35 @@ export default function DevisPage() {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
+
+                <Button
+                  onClick={handleCreateNewDevis}
+                  className="w-full sm:w-auto"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nouveau Devis
+                </Button>
               </div>
             </div>
 
             {loading ? (
               <div className="flex items-center justify-center h-40">
-                <p className="text-muted-foreground">Chargement des devis...</p>
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : filteredDevis.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center">
-                <p className="text-muted-foreground">Aucun devis trouvé</p>
+                <p className="text-muted-foreground mb-4">Aucun devis trouvé</p>
+                <Button onClick={handleCreateNewDevis}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Créer votre premier devis
+                </Button>
               </div>
             ) : (
               <div className="grid gap-4">
                 {filteredDevis.map((d) => (
                   <Card
                     key={d.id}
-                    className="card-interactive"
+                    className="card-interactive cursor-pointer hover:shadow-md transition-shadow"
                     onClick={() => setSelectedDevis(d)}
                   >
                     <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -146,22 +290,30 @@ export default function DevisPage() {
                         <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
                         <span className="truncate">{d.id}</span>
                       </CardTitle>
-                      <Badge variant={getStatusBadgeVariant(d.status)}>
-                        {getStatusLabel(d.status)}
+                      <Badge
+                        variant={
+                          STATUS_COLORS[d.status]?.variant as
+                            | "default"
+                            | "secondary"
+                            | "destructive"
+                            | "outline"
+                        }
+                      >
+                        {STATUS_COLORS[d.status]?.label || d.status}
                       </Badge>
                     </CardHeader>
                     <CardContent className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                       <div className="min-w-0">
-                        <p className="font-medium truncate">
-                          {d.clientName}
-                        </p>
+                        <p className="font-medium truncate">{d.clientName}</p>
                         <p className="text-sm text-muted-foreground">
                           {new Date(d.createdAt).toLocaleDateString("fr-FR")}
                         </p>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <p className="font-bold text-lg shrink-0">{d.total.toFixed(2)} TND</p>
+                        <p className="font-bold text-lg shrink-0">
+                          {parseFloat(d.total).toFixed(2)} TND
+                        </p>
                         <Button size="icon" variant="outline" className="shrink-0">
                           <Download className="h-4 w-4" />
                         </Button>
@@ -189,8 +341,17 @@ export default function DevisPage() {
                   <span className="text-xl font-semibold">
                     Devis {selectedDevis.id}
                   </span>
-                  <Badge variant={getStatusBadgeVariant(selectedDevis.status)}>
-                    {getStatusLabel(selectedDevis.status)}
+                  <Badge
+                    variant={
+                      STATUS_COLORS[selectedDevis.status]?.variant as
+                        | "default"
+                        | "secondary"
+                        | "destructive"
+                        | "outline"
+                    }
+                  >
+                    {STATUS_COLORS[selectedDevis.status]?.label ||
+                      selectedDevis.status}
                   </Badge>
                 </DialogTitle>
               </DialogHeader>
@@ -201,7 +362,9 @@ export default function DevisPage() {
                   <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                     Client
                   </p>
-                  <p className="font-semibold text-base">{selectedDevis.clientName}</p>
+                  <p className="font-semibold text-base">
+                    {selectedDevis.clientName}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {selectedDevis.clientEmail}
                   </p>
@@ -210,8 +373,16 @@ export default function DevisPage() {
                       {selectedDevis.clientPhone}
                     </p>
                   )}
+                  {selectedDevis.clientAddr && (
+                    <p className="text-sm text-muted-foreground">
+                      {selectedDevis.clientAddr}
+                    </p>
+                  )}
                   <p className="text-sm text-muted-foreground mt-2">
-                    Date: {new Date(selectedDevis.createdAt).toLocaleDateString("fr-FR")}
+                    Date:{" "}
+                    {new Date(selectedDevis.createdAt).toLocaleDateString(
+                      "fr-FR"
+                    )}
                   </p>
                 </div>
 
@@ -219,24 +390,32 @@ export default function DevisPage() {
 
                 <div className="space-y-3">
                   <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                    Produits
+                    Produits ({selectedDevis.itemsCount})
                   </p>
                   {selectedDevis.items && selectedDevis.items.length > 0 ? (
                     selectedDevis.items.map((item: any, i: number) => (
-                      <div key={i} className="flex justify-between items-center py-2">
+                      <div
+                        key={i}
+                        className="flex justify-between items-center py-2"
+                      >
                         <span className="text-sm">
-                          Produit x{item.quantity}
+                          {item.product?.name || "Produit"}
                           <span className="text-muted-foreground ml-1">
-                            ({item.price} TND/u)
+                            x{item.quantity} ({item.price} TND/u)
                           </span>
                         </span>
                         <span className="font-semibold">
-                          {(item.price * item.quantity).toFixed(2)} TND
+                          {(
+                            parseFloat(item.price) * item.quantity
+                          ).toFixed(2)}{" "}
+                          TND
                         </span>
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-muted-foreground">Aucun produit</p>
+                    <p className="text-sm text-muted-foreground">
+                      Aucun produit
+                    </p>
                   )}
                 </div>
 
@@ -244,7 +423,9 @@ export default function DevisPage() {
 
                 <div className="flex justify-between items-center py-2">
                   <span className="font-bold text-lg">Total</span>
-                  <span className="font-bold text-xl">{selectedDevis.total.toFixed(2)} TND</span>
+                  <span className="font-bold text-xl">
+                    {parseFloat(selectedDevis.total).toFixed(2)} TND
+                  </span>
                 </div>
               </div>
 
@@ -254,36 +435,69 @@ export default function DevisPage() {
                   <Button
                     variant="secondary"
                     className="w-full"
-                    onClick={() => handleUpdateStatus(selectedDevis.id, "APPROUVE")}
+                    onClick={() =>
+                      handleUpdateStatus(selectedDevis.id, "APPROUVE")
+                    }
+                    disabled={updatingStatus}
                   >
+                    {updatingStatus ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : null}
                     Approuver
                   </Button>
 
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={() => handleUpdateStatus(selectedDevis.id, "SUSPENDU")}
+                    onClick={() =>
+                      handleUpdateStatus(selectedDevis.id, "SUSPENDU")
+                    }
+                    disabled={updatingStatus}
                   >
+                    {updatingStatus ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : null}
                     Suspendre
                   </Button>
 
                   <Button
                     variant="destructive"
                     className="w-full"
-                    onClick={() => handleUpdateStatus(selectedDevis.id, "REJETE")}
+                    onClick={() =>
+                      handleUpdateStatus(selectedDevis.id, "REJETE")
+                    }
+                    disabled={updatingStatus}
                   >
+                    {updatingStatus ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : null}
                     Rejeter
                   </Button>
                 </div>
 
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   className="w-full"
-                  onClick={() => handleDeleteDevis(selectedDevis.id)}
+                  onClick={() => handleViewDevis(selectedDevis.id)}
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Supprimer le devis
+                  Voir les détails complets
                 </Button>
+
+                {selectedDevis.status === "BROUILLON" && (
+                  <Button
+                    variant="destructive"
+                    className="w-full"
+                    onClick={() => handleDeleteDevis(selectedDevis.id)}
+                    disabled={deleting}
+                  >
+                    {deleting ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 mr-2" />
+                    )}
+                    Supprimer le devis
+                  </Button>
+                )}
               </div>
             </>
           )}

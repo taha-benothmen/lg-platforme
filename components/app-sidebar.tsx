@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { FC, ElementType } from "react"
+import { FC, ElementType, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { authUtils } from "@/lib/auth"
 import {
@@ -24,8 +24,66 @@ interface AppSidebarProps {
   menu: MenuItem[]
 }
 
+interface UserSession {
+  id: string
+  email: string
+  role: string
+  firstName?: string
+  lastName?: string
+  route: string
+}
+
 export const AppSidebar: FC<AppSidebarProps> = ({ menu }) => {
   const router = useRouter()
+  const [userName, setUserName] = useState<string>("Utilisateur")
+  const [isLoaded, setIsLoaded] = useState(false)
+
+  useEffect(() => {
+    // Récupérer les données utilisateur du localStorage
+    const userSession = localStorage.getItem("userSession")
+    console.log("📦 userSession from localStorage:", userSession)
+    
+    if (userSession) {
+      try {
+        const user: UserSession = JSON.parse(userSession)
+        console.log("👤 User parsed:", user)
+        
+        // Construire le nom d'affichage
+        let displayName = "Utilisateur"
+        
+        if (user.firstName && user.lastName) {
+          displayName = `${user.firstName} ${user.lastName}`
+        } else if (user.firstName) {
+          displayName = user.firstName
+        } else if (user.lastName) {
+          displayName = user.lastName
+        } else if (user.email) {
+          displayName = user.email.split("@")[0]
+        }
+        
+        console.log("✅ Display name set to:", displayName)
+        setUserName(displayName)
+      } catch (error) {
+        console.error("❌ Erreur lors de la lecture des données utilisateur:", error)
+        setUserName("Utilisateur")
+      }
+    } else {
+      console.warn("⚠️ Aucune session utilisateur trouvée")
+    }
+    
+    setIsLoaded(true)
+  }, [])
+
+  const handleLogout = () => {
+    // Supprimer la session
+    authUtils.clearSession()
+    // Supprimer le cookie
+    document.cookie = "lg_user_role=; path=/; max-age=0"
+    // Supprimer les données du localStorage
+    localStorage.removeItem("userSession")
+    // Rediriger vers login
+    router.push("/auth/login")
+  }
 
   return (
     <aside className="w-64 h-screen bg-gray-100 p-4 flex flex-col">
@@ -75,22 +133,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({ menu }) => {
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton>
                   <User2 className="size-5" />
-                  <span>Username</span>
+                  <span className="truncate">{isLoaded ? userName : "Chargement..."}</span>
                   <ChevronUp className="ml-auto size-4" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
 
               <DropdownMenuContent side="top" align="start">
-                <DropdownMenuItem
-                  onClick={() => {
-                    // Supprimer la session
-                    authUtils.clearSession()
-                    // Supprimer le cookie
-                    document.cookie = "lg_user_role=; path=/; max-age=0"
-                    // Rediriger vers login
-                    router.push("/auth/login")
-                  }}
-                >
+                <DropdownMenuItem onClick={handleLogout}>
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
