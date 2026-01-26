@@ -29,7 +29,7 @@ type DevisPayload = {
   total: number
 }
 
-// Validate user access
+// Validate user access with admin support
 async function validateUserAccess(userId: string) {
   if (!userId || userId.trim() === "") {
     return { valid: false, error: "userId is required" }
@@ -37,18 +37,24 @@ async function validateUserAccess(userId: string) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, etablissementId: true },
+    select: { id: true, role: true, etablissementId: true },
   })
 
   if (!user) {
     return { valid: false, error: "User not found" }
   }
 
+  // Admins don't need an establishment
+  if (user.role === "ADMIN") {
+    return { valid: true, user, isAdmin: true }
+  }
+
+  // Non-admins must have an establishment
   if (!user.etablissementId) {
     return { valid: false, error: "No establishment associated with this user" }
   }
 
-  return { valid: true, user }
+  return { valid: true, user, isAdmin: false }
 }
 
 // Get all child establishment IDs recursively
@@ -133,32 +139,38 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { user } = userValidation as any
+    const { user, isAdmin } = userValidation as any
 
-    // Get user's establishment info
-    const userEtab = await prisma.etablissement.findUnique({
-      where: { id: user.etablissementId },
-      select: { id: true, parentId: true },
-    })
-
-    if (!userEtab) {
-      return NextResponse.json(
-        { error: "Establishment not found", success: false },
-        { status: 404 }
-      )
-    }
-
-    // Determine which establishment IDs to query based on hierarchy
+    // For admins, no establishment filter needed
     let etablissementIds: string[] = []
 
-    if (userEtab.parentId) {
-      // User is a child establishment - only show devis from their own establishment
-      etablissementIds = [user.etablissementId]
+    if (isAdmin) {
+      // Admins see everything - pass empty array to mean "no filter"
+      etablissementIds = []
     } else {
-      // User is a parent establishment - show devis from all child establishments
-      etablissementIds = [user.etablissementId]
-      const childIds = await getAllChildEstablishmentIds(user.etablissementId)
-      etablissementIds = [...etablissementIds, ...childIds]
+      // Get user's establishment info
+      const userEtab = await prisma.etablissement.findUnique({
+        where: { id: user.etablissementId },
+        select: { id: true, parentId: true },
+      })
+
+      if (!userEtab) {
+        return NextResponse.json(
+          { error: "Establishment not found", success: false },
+          { status: 404 }
+        )
+      }
+
+      // Determine which establishment IDs to query based on hierarchy
+      if (userEtab.parentId) {
+        // User is a child establishment - only show devis from their own establishment
+        etablissementIds = [user.etablissementId]
+      } else {
+        // User is a parent establishment - show devis from all child establishments
+        etablissementIds = [user.etablissementId]
+        const childIds = await getAllChildEstablishmentIds(user.etablissementId)
+        etablissementIds = [...etablissementIds, ...childIds]
+      }
     }
 
     // Get specific devis if ID provided
@@ -214,8 +226,8 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      // Check if user has access to this devis
-      if (!etablissementIds.includes(devis.etablissementId)) {
+      // Check if user has access to this devis (admins can access all)
+      if (!isAdmin && !etablissementIds.includes(devis.etablissementId)) {
         return NextResponse.json(
           { error: "Unauthorized access", success: false },
           { status: 403 }
@@ -232,10 +244,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all devis with filters
-    const whereClause: any = {
-      etablissementId: {
+    const whereClause: any = {}
+
+    // Only add establishment filter if user is NOT admin
+    if (!isAdmin && etablissementIds.length > 0) {
+      whereClause.etablissementId = {
         in: etablissementIds,
-      },
+      }
     }
 
     // Apply status filter if provided
@@ -243,8 +258,8 @@ export async function GET(request: NextRequest) {
       whereClause.status = status
     }
 
-    // Apply establishment filter if provided and user is a parent
-    if (etablissementFilter && etablissementFilter !== "ALL" && !userEtab.parentId) {
+    // Apply establishment filter if provided and user is a parent (not admin)
+    if (etablissementFilter && etablissementFilter !== "ALL" && !isAdmin) {
       whereClause.etablissementId = etablissementFilter
     }
 
@@ -519,6 +534,8 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    const { isAdmin } = userValidation as any
+
     const validStatuses = [
       "BROUILLON",
       "ENVOYE",
@@ -537,7 +554,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Check if devis exists and user owns it
+    // Check if devis exists
     const devis = await prisma.devis.findUnique({
       where: { id: devisId },
       select: { createdById: true, status: true },
@@ -550,7 +567,8 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    if (devis.createdById !== userId) {
+    // Only check ownership if user is not admin
+    if (!isAdmin && devis.createdById !== userId) {
       return NextResponse.json(
         { error: "Unauthorized access", success: false },
         { status: 403 }
@@ -663,6 +681,8 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
+    const { isAdmin } = userValidation as any
+
     const devis = await prisma.devis.findUnique({
       where: { id: devisId },
       select: { status: true, createdById: true },
@@ -675,7 +695,8 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    if (devis.createdById !== userId) {
+    // Only check ownership if user is not admin
+    if (!isAdmin && devis.createdById !== userId) {
       return NextResponse.json(
         { error: "Unauthorized access", success: false },
         { status: 403 }
