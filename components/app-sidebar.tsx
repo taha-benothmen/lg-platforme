@@ -46,7 +46,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ menu }) => {
     if (userSession) {
       try {
         const user: UserSession = JSON.parse(userSession)
-        console.log("👤 User parsed:", user)
+        console.log("User parsed:", user)
         
         // Construire le nom d'affichage
         let displayName = "Utilisateur"
@@ -61,14 +61,14 @@ export const AppSidebar: FC<AppSidebarProps> = ({ menu }) => {
           displayName = user.email.split("@")[0]
         }
         
-        console.log("✅ Display name set to:", displayName)
+        console.log("Display name set to:", displayName)
         setUserName(displayName)
       } catch (error) {
-        console.error("❌ Erreur lors de la lecture des données utilisateur:", error)
+        console.error("Erreur lors de la lecture des données utilisateur:", error)
         setUserName("Utilisateur")
       }
     } else {
-      console.warn("⚠️ Aucune session utilisateur trouvée")
+      console.warn("Aucune session utilisateur trouvée")
     }
     
     setIsLoaded(true)

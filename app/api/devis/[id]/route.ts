@@ -1,9 +1,7 @@
-// app/api/devis/[id]/route.ts
-
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-/* ================= Helpers ================= */
+
 
 async function validateUserAccess(userId: string) {
   const user = await prisma.user.findUnique({
@@ -166,13 +164,12 @@ export async function GET(
       )
     }
 
-    // Check if user has access to this devis (same establishment)
-    if (devis.etablissementId !== userValidation.user.etablissementId) {
+    /*if (devis.etablissementId !== userValidation.user.etablissementId) {
       return NextResponse.json(
         { error: "Accès non autorisé", success: false },
         { status: 403 }
       )
-    }
+    }*/
 
     return NextResponse.json(
       { success: true, data: formatDevisResponse(devis) },
@@ -187,7 +184,6 @@ export async function GET(
   }
 }
 
-/* ================= PUT ================= */
 
 export async function PUT(
   request: NextRequest,
@@ -225,7 +221,7 @@ export async function PUT(
 
     // Validate status
     const validStatuses = [
-      "BROUILLON",
+      "EN_ATTENTE",
       "ENVOYE",
       "APPROUVE",
       "SUSPENDU",
@@ -246,7 +242,7 @@ export async function PUT(
       select: {
         id: true,
         etablissementId: true,
-        status: true,
+        //status: true,
       },
     })
 
@@ -258,18 +254,18 @@ export async function PUT(
     }
 
     // Check if user has access to this devis (same establishment)
-    if (devis.etablissementId !== userValidation.user.etablissementId) {
+    /*if (devis.etablissementId !== userValidation.user.etablissementId) {
       return NextResponse.json(
         { error: "Accès non autorisé", success: false },
         { status: 403 }
       )
-    }
+    }*/
 
     // Update the devis
     const updatedDevis = await prisma.devis.update({
       where: { id },
       data: {
-        status,
+        responsableStatus: status,
         validatedById: userId,
         updatedAt: new Date(),
       },
@@ -371,7 +367,7 @@ export async function DELETE(
     const devis = await prisma.devis.findUnique({
       where: { id },
       select: {
-        status: true,
+        responsableStatus: true,
         etablissementId: true,
       },
     })
@@ -383,17 +379,17 @@ export async function DELETE(
       )
     }
 
-    if (devis.etablissementId !== userValidation.user.etablissementId) {
+    /*if (devis.etablissementId !== userValidation.user.etablissementId) {
       return NextResponse.json(
         { error: "Accès non autorisé", success: false },
         { status: 403 }
       )
-    }
+    }*/
 
-    if (devis.status !== "BROUILLON") {
+    if (devis.responsableStatus !== "EN_ATTENTE") {
       return NextResponse.json(
         {
-          error: "Seuls les devis en brouillon peuvent être supprimés",
+          error: "Seuls les devis en EN_ATTENTE peuvent être supprimés",
           success: false,
         },
         { status: 400 }

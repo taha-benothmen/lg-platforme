@@ -46,25 +46,28 @@ type DevisItem = {
   clientPhone?: string
   clientAddr?: string
   clientEnterprise?: string
+  clientNotes?: string
+  adminDescription?: string
   total: string
-  status: "BROUILLON" | "ENVOYE" | "APPROUVE" | "SUSPENDU" | "REJETE" | "ACCEPTE"
+  responsableStatus: "EN_ATTENTE" | "APPROUVE" | "SUSPENDU" | "REJETE"
+  adminStatus: "EN_ATTENTE" | "VALIDE" | "REJETE" | "APPROUVE"
   createdAt: string
   updatedAt: string
   itemsCount: number
   etablissementId: string
-  subEstablishment?: {
-    id: string
-    name: string
-  }
-  responsible?: {
-    id: string
-    name: string
-  }
   createdBy?: {
     id: string
     firstName: string
     lastName: string
     email: string
+  }
+  validatedBy?: {
+    firstName: string
+    lastName: string
+  }
+  adminValidatedBy?: {
+    firstName: string
+    lastName: string
   }
   etablissement?: {
     id: string
@@ -94,13 +97,18 @@ type SubEstablishment = {
   name: string
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  EN_ATTENTE: "En attente",
+  APPROUVE: "Approuvé",
+  SUSPENDU: "Suspendu",
+  REJETE: "Rejeté",
+}
+
 const STATUS_COLORS: Record<string, { label: string; variant: string; bg: string; text: string }> = {
-  BROUILLON: { label: "Brouillon", variant: "secondary", bg: "bg-gray-100", text: "text-gray-900" },
-  ENVOYE: { label: "Envoyé", variant: "outline", bg: "bg-blue-100", text: "text-blue-900" },
+  EN_ATTENTE: { label: "En attente", variant: "secondary", bg: "bg-gray-100", text: "text-gray-900" },
   APPROUVE: { label: "Approuvé", variant: "default", bg: "bg-green-100", text: "text-green-900" },
   SUSPENDU: { label: "Suspendu", variant: "outline", bg: "bg-yellow-100", text: "text-yellow-900" },
   REJETE: { label: "Rejeté", variant: "destructive", bg: "bg-red-100", text: "text-red-900" },
-  ACCEPTE: { label: "Accepté", variant: "default", bg: "bg-emerald-100", text: "text-emerald-900" },
 }
 
 const STATUS_BUTTON_COLORS: Record<string, string> = {
@@ -109,13 +117,19 @@ const STATUS_BUTTON_COLORS: Record<string, string> = {
   REJETE: "bg-red-100 hover:bg-red-200 text-red-900 border-0",
   default: "bg-gray-100 hover:bg-gray-200 text-gray-900 border-0",
 }
+const STATUS_CLASSES: Record<string, string> = {
+  EN_ATTENTE: "bg-yellow-100 text-yellow-900",
+  APPROUVE: "bg-green-100 text-green-900",
+  SUSPENDU: "bg-orange-100 text-orange-900",
+  REJETE: "bg-red-100 text-red-900",
+}
 
 export default function DevisPage() {
   const router = useRouter()
   const [devis, setDevis] = useState<DevisItem[]>([])
   const [subEstablishments, setSubEstablishments] = useState<SubEstablishment[]>([])
   const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("ALL")
+  const [responsableStatusFilter, setResponsableStatusFilter] = useState("ALL")
   const [etablissementFilter, setEtablissementFilter] = useState("ALL")
   const [selectedDevis, setSelectedDevis] = useState<DevisItem | null>(null)
   const [loading, setLoading] = useState(true)
@@ -136,26 +150,24 @@ export default function DevisPage() {
     }, 5000)
   }
 
-// Dans ton composant DevisPage
-useEffect(() => {
-  const loadSubEstablishments = async () => {
-    try {
-      const currentUserId = localStorage.getItem("userId")
+  // Load sub-establishments
+  useEffect(() => {
+    const loadSubEstablishments = async () => {
+      try {
+        const currentUserId = localStorage.getItem("userId")
+        if (!currentUserId) return
 
-      if (!currentUserId) return
-
-      // Passer userId à l'API pour qu'elle applique la logique hiérarchique
-      const response = await fetch(`/api/etablissements?userId=${currentUserId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setSubEstablishments(Array.isArray(data) ? data : [])
+        const response = await fetch(`/api/etablissements?userId=${currentUserId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setSubEstablishments(Array.isArray(data) ? data : [])
+        }
+      } catch (error) {
+        console.error("Error loading sub-establishments:", error)
       }
-    } catch (error) {
-      console.error("Error loading sub-establishments:", error)
     }
-  }
-  loadSubEstablishments()
-}, [])
+    loadSubEstablishments()
+  }, [])
 
   // Load devis on mount
   useEffect(() => {
@@ -167,7 +179,7 @@ useEffect(() => {
     if (userId) {
       loadDevis()
     }
-  }, [statusFilter, etablissementFilter])
+  }, [responsableStatusFilter, etablissementFilter])
 
   const loadDevis = async () => {
     try {
@@ -184,9 +196,11 @@ useEffect(() => {
 
       const url = new URL("/api/devis", window.location.origin)
       url.searchParams.set("userId", currentUserId)
-      if (statusFilter !== "ALL") {
-        url.searchParams.set("status", statusFilter)
+      
+      if (responsableStatusFilter !== "ALL") {
+        url.searchParams.set("responsableStatus", responsableStatusFilter)
       }
+      
       if (etablissementFilter !== "ALL") {
         url.searchParams.set("etablissementId", etablissementFilter)
       }
@@ -231,7 +245,7 @@ useEffect(() => {
     setDeletingId(id)
     try {
       const response = await fetch(
-        `/api/devis/${id}?userId=${userId}`,
+        `/api/devis?id=${id}&userId=${userId}`,
         {
           method: "DELETE",
         }
@@ -254,7 +268,7 @@ useEffect(() => {
     }
   }
 
-  const handleUpdateStatus = async (id: string, status: string) => {
+  const handleUpdateStatus = async (id: string, statusType: "responsable" | "admin", newStatus: string) => {
     if (!userId) {
       showAlert("destructive", "Erreur", "User ID non trouvé")
       return
@@ -262,15 +276,23 @@ useEffect(() => {
 
     setUpdatingStatus(true)
     try {
-      const response = await fetch(`/api/devis/${id}`, {
+      const updatePayload: any = {
+        devisId: id,
+        userId: userId,
+      }
+
+      if (statusType === "responsable") {
+        updatePayload.responsableStatus = newStatus
+      } else {
+        updatePayload.adminStatus = newStatus
+      }
+
+      const response = await fetch("/api/devis", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          userId: userId,
-          status: status,
-        }),
+        body: JSON.stringify(updatePayload),
       })
 
       const result = await response.json()
@@ -279,23 +301,35 @@ useEffect(() => {
         throw new Error(result.error || "Failed to update devis status")
       }
 
+      // Update the devis in the list
       setDevis((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, status: status as any, updatedAt: new Date().toISOString() } : d))
+        prev.map((d) =>
+          d.id === id
+            ? {
+                ...d,
+                responsableStatus: statusType === "responsable" ? (newStatus as any) : d.responsableStatus,
+                adminStatus: statusType === "admin" ? (newStatus as any) : d.adminStatus,
+                updatedAt: new Date().toISOString(),
+              }
+            : d
+        )
       )
 
+      // Update selected devis
       if (selectedDevis && selectedDevis.id === id) {
-        setSelectedDevis({ ...selectedDevis, status: status as any, updatedAt: new Date().toISOString() })
+        setSelectedDevis((prev) =>
+          prev
+            ? {
+                ...prev,
+                responsableStatus: statusType === "responsable" ? (newStatus as any) : prev.responsableStatus,
+                adminStatus: statusType === "admin" ? (newStatus as any) : prev.adminStatus,
+                updatedAt: new Date().toISOString(),
+              }
+            : null
+        )
       }
 
-      const statusLabels: Record<string, string> = {
-        APPROUVE: "approuvé",
-        SUSPENDU: "suspendu",
-        REJETE: "rejeté",
-        ENVOYE: "envoyé",
-        ACCEPTE: "accepté",
-      }
-
-      showAlert("success", "Mise à jour réussie", `Le devis a été ${statusLabels[status] || status.toLowerCase()} avec succès`)
+      showAlert("success", "Mise à jour réussie", "Le statut a été mis à jour avec succès")
     } catch (error: any) {
       console.error("Error updating devis:", error)
       showAlert("destructive", "Erreur", error.message || "Impossible de mettre à jour le devis")
@@ -347,8 +381,15 @@ useEffect(() => {
     router.push("/responsable/devis/create")
   }
 
-  const getStatusButtonClass = (status: string) => {
-    return STATUS_BUTTON_COLORS[status] || STATUS_BUTTON_COLORS.default
+  const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
+    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+      EN_ATTENTE: "secondary",
+      APPROUVE: "default",
+      SUSPENDU: "outline",
+      REJETE: "destructive",
+      VALIDE: "default",
+    }
+    return variants[status] || "outline"
   }
 
   return (
@@ -404,22 +445,21 @@ useEffect(() => {
                   </SelectContent>
                 </Select>
 
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <Select value={responsableStatusFilter} onValueChange={setResponsableStatusFilter}>
                   <SelectTrigger className="w-full sm:w-48">
                     <Filter className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Filtrer par statut" />
+                    <SelectValue placeholder="Statut Responsable" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">Tous les statuts</SelectItem>
-                    <SelectItem value="BROUILLON">Brouillon</SelectItem>
-                    <SelectItem value="ENVOYE">Envoyé</SelectItem>
+                    <SelectItem value="EN_ATTENTE">En attente</SelectItem>
                     <SelectItem value="APPROUVE">Approuvé</SelectItem>
                     <SelectItem value="SUSPENDU">Suspendu</SelectItem>
                     <SelectItem value="REJETE">Rejeté</SelectItem>
-                    <SelectItem value="ACCEPTE">Accepté</SelectItem>
                   </SelectContent>
                 </Select>
 
+                
                 <div className="relative w-full sm:w-72">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -461,17 +501,24 @@ useEffect(() => {
                         <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
                         <span className="truncate">Devis {d.id.slice(0, 8)}</span>
                       </CardTitle>
-                      <Badge
-                        variant={
-                          STATUS_COLORS[d.status]?.variant as
-                            | "default"
-                            | "secondary"
-                            | "destructive"
-                            | "outline"
-                        }
-                      >
-                        {STATUS_COLORS[d.status]?.label || d.status}
-                      </Badge>
+                      <div className="flex gap-2">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-muted-foreground">Responsable</span>
+                          <Badge variant={getStatusBadgeVariant(d.responsableStatus)}
+                           className={STATUS_CLASSES[d.responsableStatus]}>
+                            {STATUS_LABELS[d.responsableStatus] || d.responsableStatus}
+                          </Badge>
+                        </div>
+                        {d.responsableStatus === "APPROUVE" && (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold text-muted-foreground">Admin</span>
+                            <Badge variant={getStatusBadgeVariant(d.adminStatus)}
+                             className={STATUS_CLASSES[d.adminStatus]}>
+                              {STATUS_LABELS[d.adminStatus] || d.adminStatus}
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
@@ -481,7 +528,6 @@ useEffect(() => {
                             {d.clientEmail}
                           </p>
                           <p className="text-sm text-muted-foreground mt-1">
-                            {d.subEstablishment?.name && `${d.subEstablishment.name} - `}
                             {new Date(d.createdAt).toLocaleDateString("fr-FR")}
                           </p>
                         </div>
@@ -515,7 +561,6 @@ useEffect(() => {
                         </div>
                       </div>
 
-                      {/* New: Créateur et Établissement */}
                       <div className="pt-2 border-t grid grid-cols-2 gap-2 text-xs">
                         {d.createdBy && (
                           <div>
@@ -539,29 +584,35 @@ useEffect(() => {
         </SidebarInset>
       </div>
 
-      {/* ================= POPUP ================= */}
+      {/* ================= DETAIL DIALOG ================= */}
       <Dialog open={!!selectedDevis} onOpenChange={() => setSelectedDevis(null)}>
         <DialogContent className="max-w-2xl p-0 max-h-[90vh] flex flex-col gap-0">
           {selectedDevis && (
             <>
               {/* Header */}
               <DialogHeader className="px-6 py-4 border-b">
-                <DialogTitle className="flex justify-between items-center">
+                <DialogTitle className="flex justify-between items-center gap-2 flex-wrap">
                   <span className="text-xl font-semibold">
                     Devis {selectedDevis.id.slice(0, 8)}
                   </span>
-                  <Badge
-                    variant={
-                      STATUS_COLORS[selectedDevis.status]?.variant as
-                        | "default"
-                        | "secondary"
-                        | "destructive"
-                        | "outline"
-                    }
-                  >
-                    {STATUS_COLORS[selectedDevis.status]?.label ||
-                      selectedDevis.status}
-                  </Badge>
+                  <div className="flex gap-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-semibold text-muted-foreground">Responsable</span>
+                      <Badge variant={getStatusBadgeVariant(selectedDevis.responsableStatus)}
+                       className={STATUS_CLASSES[selectedDevis.responsableStatus]}>
+                        {STATUS_LABELS[selectedDevis.responsableStatus] || selectedDevis.responsableStatus}
+                      </Badge>
+                    </div>
+                    {selectedDevis.responsableStatus === "APPROUVE" && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-semibold text-muted-foreground">Admin</span>
+                        <Badge variant={getStatusBadgeVariant(selectedDevis.adminStatus)}
+                         className={STATUS_CLASSES[selectedDevis.adminStatus]}>
+                          {STATUS_LABELS[selectedDevis.adminStatus] || selectedDevis.adminStatus}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
                 </DialogTitle>
               </DialogHeader>
 
@@ -596,16 +647,6 @@ useEffect(() => {
                       </p>
                       <p className="font-medium">
                         {selectedDevis.etablissement.name}
-                      </p>
-                    </div>
-                  )}
-                  {selectedDevis.subEstablishment && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Sous-établissement
-                      </p>
-                      <p className="font-medium">
-                        {selectedDevis.subEstablishment.name}
                       </p>
                     </div>
                   )}
@@ -681,9 +722,56 @@ useEffect(() => {
                     {parseFloat(selectedDevis.total).toFixed(2)} TND
                   </span>
                 </div>
+
+                {selectedDevis.responsableStatus === "APPROUVE" && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <div>
+                        <p className="text-sm font-semibold text-blue-900 uppercase tracking-wide mb-3">
+                          📋 Réponse de l'Admin
+                        </p>
+                        <Badge variant={getStatusBadgeVariant(selectedDevis.adminStatus)} className="w-fit text-base py-2 px-3">
+                          {STATUS_LABELS[selectedDevis.adminStatus] || selectedDevis.adminStatus}
+                        </Badge>
+                      </div>
+
+                      {selectedDevis.adminDescription && (
+                        <div>
+                          <p className="text-sm font-semibold text-blue-900 mb-2">💬 Commentaire</p>
+                          <div className="bg-white p-3 rounded border border-blue-100">
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                              {selectedDevis.adminDescription}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedDevis.adminValidatedBy && (
+                        <div className="pt-2 border-t border-blue-200">
+                          <p className="text-xs font-semibold text-blue-900">
+                            👤 Traité par: {selectedDevis.adminValidatedBy.firstName} {selectedDevis.adminValidatedBy.lastName}
+                          </p>
+                        </div>
+                      )}
+
+                      {!selectedDevis.adminDescription && selectedDevis.adminStatus !== "EN_ATTENTE" && (
+                        <div className="text-xs text-blue-700 italic pt-2 border-t border-blue-200">
+                          Aucun commentaire fourni
+                        </div>
+                      )}
+
+                      {selectedDevis.adminStatus === "EN_ATTENTE" && (
+                        <div className="text-xs text-blue-700 italic pt-2 border-t border-blue-200">
+                          ⏳ En attente de réponse de l'administration...
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
-              {/* FOOTER FIXED */}
+              {/* FOOTER FIXED - VERSION CORRIGÉE */}
               <div className="px-6 py-4 border-t space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                   <Button
@@ -707,62 +795,134 @@ useEffect(() => {
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
-                  <Button
-                    className={`w-full ${getStatusButtonClass("APPROUVE")}`}
-                    onClick={() =>
-                      handleUpdateStatus(selectedDevis.id, "APPROUVE")
-                    }
-                    disabled={updatingStatus || deletingId === selectedDevis.id}
-                  >
-                    {updatingStatus ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : null}
-                    Approuver
-                  </Button>
+                {/* ✅ ÉTAT: EN_ATTENTE - Affiche Approuver, Suspendre, Rejeter */}
+                {selectedDevis.responsableStatus === "EN_ATTENTE" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
+                    <Button
+                      className="w-full bg-green-100 hover:bg-green-200 text-green-900 border-0"
+                      onClick={() =>
+                        handleUpdateStatus(selectedDevis.id, "responsable", "APPROUVE")
+                      }
+                      disabled={updatingStatus || deletingId === selectedDevis.id}
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
+                      Approuver
+                    </Button>
 
-                  <Button
-                    className={`w-full ${getStatusButtonClass("SUSPENDU")}`}
-                    onClick={() =>
-                      handleUpdateStatus(selectedDevis.id, "SUSPENDU")
-                    }
-                    disabled={updatingStatus || deletingId === selectedDevis.id}
-                  >
-                    {updatingStatus ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : null}
-                    Suspendre
-                  </Button>
+                    <Button
+                      className="w-full bg-yellow-100 hover:bg-yellow-200 text-yellow-900 border-0"
+                      onClick={() =>
+                        handleUpdateStatus(selectedDevis.id, "responsable", "SUSPENDU")
+                      }
+                      disabled={updatingStatus || deletingId === selectedDevis.id}
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
+                      Suspendre
+                    </Button>
 
-                  <Button
-                    className={`w-full ${getStatusButtonClass("REJETE")}`}
-                    onClick={() =>
-                      handleUpdateStatus(selectedDevis.id, "REJETE")
-                    }
-                    disabled={updatingStatus || deletingId === selectedDevis.id}
-                  >
-                    {updatingStatus ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : null}
-                    Rejeter
-                  </Button>
-                </div>
+                    <Button
+                      className="w-full bg-red-100 hover:bg-red-200 text-red-900 border-0"
+                      onClick={() =>
+                        handleUpdateStatus(selectedDevis.id, "responsable", "REJETE")
+                      }
+                      disabled={updatingStatus || deletingId === selectedDevis.id}
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
+                      Rejeter
+                    </Button>
+                  </div>
+                )}
 
-                
-                  <Button
-                    variant="destructive"
-                    className="w-full"
-                    onClick={() => handleDeleteDevis(selectedDevis.id)}
-                    disabled={deletingId === selectedDevis.id || updatingStatus}
-                  >
-                    {deletingId === selectedDevis.id ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4 mr-2" />
-                    )}
-                    Supprimer le devis
-                  </Button>
-              
+                {/* ✅ ÉTAT: SUSPENDU - Affiche Approuver et Rejeter */}
+                {selectedDevis.responsableStatus === "SUSPENDU" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+                    <Button
+                      className="w-full bg-green-100 hover:bg-green-200 text-green-900 border-0"
+                      onClick={() =>
+                        handleUpdateStatus(selectedDevis.id, "responsable", "APPROUVE")
+                      }
+                      disabled={updatingStatus || deletingId === selectedDevis.id}
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
+                      Approuver
+                    </Button>
+
+                    <Button
+                      className="w-full bg-red-100 hover:bg-red-200 text-red-900 border-0"
+                      onClick={() =>
+                        handleUpdateStatus(selectedDevis.id, "responsable", "REJETE")
+                      }
+                      disabled={updatingStatus || deletingId === selectedDevis.id}
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
+                      Rejeter
+                    </Button>
+                  </div>
+                )}
+
+                {/* ✅ ÉTAT: APPROUVE - Affiche Suspendre et Rejeter */}
+                {selectedDevis.responsableStatus === "APPROUVE" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+                    <Button
+                      className="w-full bg-yellow-100 hover:bg-yellow-200 text-yellow-900 border-0"
+                      onClick={() =>
+                        handleUpdateStatus(selectedDevis.id, "responsable", "SUSPENDU")
+                      }
+                      disabled={updatingStatus || deletingId === selectedDevis.id}
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
+                      Suspendre
+                    </Button>
+
+                    <Button
+                      className="w-full bg-red-100 hover:bg-red-200 text-red-900 border-0"
+                      onClick={() =>
+                        handleUpdateStatus(selectedDevis.id, "responsable", "REJETE")
+                      }
+                      disabled={updatingStatus || deletingId === selectedDevis.id}
+                    >
+                      {updatingStatus ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
+                      Rejeter
+                    </Button>
+                  </div>
+                )}
+
+                {/* ✅ ÉTAT: REJETE - Pas de boutons d'action (état final) */}
+                {selectedDevis.responsableStatus === "REJETE" && (
+                  <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                    <p className="text-sm text-red-700 font-semibold">
+                      ❌ Ce devis est rejeté et ne peut plus être modifié
+                    </p>
+                  </div>
+                )}
+
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  onClick={() => handleDeleteDevis(selectedDevis.id)}
+                  disabled={deletingId === selectedDevis.id || updatingStatus || selectedDevis.responsableStatus !== "EN_ATTENTE"}
+                >
+                  {deletingId === selectedDevis.id ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-2" />
+                  )}
+                  Supprimer le devis
+                </Button>
               </div>
             </>
           )}

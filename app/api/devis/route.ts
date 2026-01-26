@@ -1,5 +1,3 @@
-// app/api/devis/route.ts
-
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { Decimal } from "@prisma/client/runtime/library"
@@ -44,12 +42,10 @@ async function validateUserAccess(userId: string) {
     return { valid: false, error: "User not found" }
   }
 
-  // Admins don't need an establishment
   if (user.role === "ADMIN") {
     return { valid: true, user, isAdmin: true }
   }
 
-  // Non-admins must have an establishment
   if (!user.etablissementId) {
     return { valid: false, error: "No establishment associated with this user" }
   }
@@ -85,7 +81,8 @@ function formatDevisResponse(devis: any, includeItems: boolean = false) {
     clientEnterprise: devis.clientEnterprise,
     clientNotes: devis.clientNotes,
     total: devis.total.toString(),
-    status: devis.status,
+    responsableStatus: devis.responsableStatus,
+    adminStatus: devis.adminStatus,
     itemsCount: devis.items?.length || 0,
     createdBy: devis.createdBy
       ? {
@@ -100,6 +97,13 @@ function formatDevisResponse(devis: any, includeItems: boolean = false) {
           id: devis.validatedBy.id,
           firstName: devis.validatedBy.firstName,
           lastName: devis.validatedBy.lastName,
+        }
+      : null,
+    adminValidatedBy: devis.adminValidatedBy
+      ? {
+          id: devis.adminValidatedBy.id,
+          firstName: devis.adminValidatedBy.firstName,
+          lastName: devis.adminValidatedBy.lastName,
         }
       : null,
     etablissement: devis.etablissement
@@ -118,7 +122,8 @@ function formatDevisResponse(devis: any, includeItems: boolean = false) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const status = searchParams.get("status")
+    const responsableStatus = searchParams.get("responsableStatus")
+    const adminStatus = searchParams.get("adminStatus")
     const devisId = searchParams.get("id")
     const userId = searchParams.get("userId")
     const etablissementFilter = searchParams.get("etablissementId")
@@ -135,20 +140,18 @@ export async function GET(request: NextRequest) {
     if (!userValidation.valid) {
       return NextResponse.json(
         { error: userValidation.error, success: false },
-        { status: userValidation.error.includes("not found") ? 404 : 400 }
+        
       )
     }
 
     const { user, isAdmin } = userValidation as any
 
-    // For admins, no establishment filter needed
+    // Determine establishment filter
     let etablissementIds: string[] = []
 
     if (isAdmin) {
-      // Admins see everything - pass empty array to mean "no filter"
       etablissementIds = []
     } else {
-      // Get user's establishment info
       const userEtab = await prisma.etablissement.findUnique({
         where: { id: user.etablissementId },
         select: { id: true, parentId: true },
@@ -161,12 +164,9 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      // Determine which establishment IDs to query based on hierarchy
       if (userEtab.parentId) {
-        // User is a child establishment - only show devis from their own establishment
         etablissementIds = [user.etablissementId]
       } else {
-        // User is a parent establishment - show devis from all child establishments
         etablissementIds = [user.etablissementId]
         const childIds = await getAllChildEstablishmentIds(user.etablissementId)
         etablissementIds = [...etablissementIds, ...childIds]
@@ -207,6 +207,13 @@ export async function GET(request: NextRequest) {
               lastName: true,
             },
           },
+          adminValidatedBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
           etablissement: {
             select: {
               id: true,
@@ -226,7 +233,6 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      // Check if user has access to this devis (admins can access all)
       if (!isAdmin && !etablissementIds.includes(devis.etablissementId)) {
         return NextResponse.json(
           { error: "Unauthorized access", success: false },
@@ -246,19 +252,20 @@ export async function GET(request: NextRequest) {
     // Get all devis with filters
     const whereClause: any = {}
 
-    // Only add establishment filter if user is NOT admin
     if (!isAdmin && etablissementIds.length > 0) {
       whereClause.etablissementId = {
         in: etablissementIds,
       }
     }
 
-    // Apply status filter if provided
-    if (status && status !== "ALL") {
-      whereClause.status = status
+    if (responsableStatus && responsableStatus !== "ALL") {
+      whereClause.responsableStatus = responsableStatus
     }
 
-    // Apply establishment filter if provided and user is a parent (not admin)
+    if (adminStatus && adminStatus !== "ALL") {
+      whereClause.adminStatus = adminStatus
+    }
+
     if (etablissementFilter && etablissementFilter !== "ALL" && !isAdmin) {
       whereClause.etablissementId = etablissementFilter
     }
@@ -286,6 +293,13 @@ export async function GET(request: NextRequest) {
           },
         },
         validatedBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        adminValidatedBy: {
           select: {
             id: true,
             firstName: true,
@@ -328,7 +342,6 @@ export async function POST(request: NextRequest) {
   try {
     const body: DevisPayload = await request.json()
 
-    // Validate required fields
     if (!body.userId) {
       return NextResponse.json(
         { error: "userId is required", success: false },
@@ -346,18 +359,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate user
     const userValidation = await validateUserAccess(body.userId)
     if (!userValidation.valid) {
       return NextResponse.json(
         { error: userValidation.error, success: false },
-        { status: userValidation.error.includes("not found") ? 404 : 400 }
       )
     }
 
     const { user } = userValidation as any
 
-    // Validate and parse total
     let totalAmount: Decimal
     try {
       totalAmount = new Decimal(body.total.toString())
@@ -374,7 +384,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate client data
     const clientErrors = []
     if (!body.client.nom?.trim())
       clientErrors.push("Client last name is required")
@@ -392,18 +401,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify products exist and have stock
     const productIds = body.products.map((p) => p.id)
     const dbProducts = await prisma.product.findMany({
-      where: {
-        id: { in: productIds },
-      },
-      select: {
-        id: true,
-        name: true,
-        stock: true,
-        price: true,
-      },
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, stock: true, price: true },
     })
 
     if (dbProducts.length !== body.products.length) {
@@ -418,7 +419,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check stock availability
     const stockErrors = []
     for (const product of body.products) {
       const dbProduct = dbProducts.find((p) => p.id === product.id)
@@ -436,7 +436,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create devis with items
     const devis = await prisma.devis.create({
       data: {
         clientName: `${body.client.prenom.trim()} ${body.client.nom.trim()}`,
@@ -446,7 +445,8 @@ export async function POST(request: NextRequest) {
         clientEnterprise: body.client.entreprise?.trim() || null,
         clientNotes: body.client.notes?.trim() || null,
         total: totalAmount,
-        status: "BROUILLON",
+        responsableStatus: "EN_ATTENTE",
+        adminStatus: "EN_ATTENTE",
         createdById: body.userId,
         etablissementId: user.etablissementId,
         items: {
@@ -464,27 +464,15 @@ export async function POST(request: NextRequest) {
         items: {
           include: {
             product: {
-              select: {
-                id: true,
-                name: true,
-                price: true,
-              },
+              select: { id: true, name: true, price: true },
             },
           },
         },
         createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
+          select: { id: true, firstName: true, lastName: true, email: true },
         },
         etablissement: {
-          select: {
-            id: true,
-            name: true,
-          },
+          select: { id: true, name: true },
         },
       },
     })
@@ -513,19 +501,18 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { devisId, userId, status, validatedById } = body
+    const { devisId, userId, responsableStatus, adminStatus } = body
 
-    if (!devisId || !userId || !status) {
+    if (!devisId || !userId || (!responsableStatus && !adminStatus)) {
       return NextResponse.json(
         {
-          error: "devisId, userId, and status are required",
+          error: "devisId, userId, and either responsableStatus or adminStatus are required",
           success: false,
         },
         { status: 400 }
       )
     }
 
-    // Validate user
     const userValidation = await validateUserAccess(userId)
     if (!userValidation.valid) {
       return NextResponse.json(
@@ -536,28 +523,42 @@ export async function PUT(request: NextRequest) {
 
     const { isAdmin } = userValidation as any
 
-    const validStatuses = [
-      "BROUILLON",
-      "ENVOYE",
+    const validResponsableStatuses = [
+      "EN_ATTENTE",
       "APPROUVE",
       "SUSPENDU",
       "REJETE",
-      "ACCEPTE",
     ]
-    if (!validStatuses.includes(status)) {
+
+    const validAdminStatuses = [
+      "EN_ATTENTE",
+      "REJETE",
+      "APPROUVE",
+    ]
+
+    if (responsableStatus && !validResponsableStatuses.includes(responsableStatus)) {
       return NextResponse.json(
         {
-          error: `Invalid status. Valid statuses: ${validStatuses.join(", ")}`,
+          error: `Invalid responsable status. Valid statuses: ${validResponsableStatuses.join(", ")}`,
           success: false,
         },
         { status: 400 }
       )
     }
 
-    // Check if devis exists
+    if (adminStatus && !validAdminStatuses.includes(adminStatus)) {
+      return NextResponse.json(
+        {
+          error: `Invalid admin status. Valid statuses: ${validAdminStatuses.join(", ")}`,
+          success: false,
+        },
+        { status: 400 }
+      )
+    }
+
     const devis = await prisma.devis.findUnique({
       where: { id: devisId },
-      select: { createdById: true, status: true },
+      select: { createdById: true, responsableStatus: true, adminStatus: true, etablissementId: true },
     })
 
     if (!devis) {
@@ -567,7 +568,6 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Only check ownership if user is not admin
     if (!isAdmin && devis.createdById !== userId) {
       return NextResponse.json(
         { error: "Unauthorized access", success: false },
@@ -575,65 +575,80 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Validate status transitions
-    const validTransitions: Record<string, string[]> = {
-      BROUILLON: ["ENVOYE", "REJETE"],
-      ENVOYE: ["APPROUVE", "SUSPENDU", "REJETE"],
-      APPROUVE: ["ACCEPTE", "SUSPENDU"],
-      SUSPENDU: ["ENVOYE", "REJETE"],
+    const validResponsableTransitions: Record<string, string[]> = {
+      EN_ATTENTE: ["APPROUVE", "SUSPENDU", "REJETE"], 
+      APPROUVE: ["SUSPENDU", "REJETE"],
+      SUSPENDU: ["APPROUVE", "REJETE"],
       REJETE: [],
-      ACCEPTE: [],
     }
 
-    if (!validTransitions[devis.status]?.includes(status)) {
+    const validAdminTransitions: Record<string, string[]> = {
+      EN_ATTENTE: ["APPROUVE", "REJETE"],
+      VALIDE: ["APPROUVE", "REJETE"],
+      REJETE: [],
+      APPROUVE: [],
+    }
+
+    if (responsableStatus && !validResponsableTransitions[devis.responsableStatus]?.includes(responsableStatus)) {
       return NextResponse.json(
         {
-          error: `Invalid status transition: ${devis.status} → ${status}`,
+          error: `Invalid responsable status transition: ${devis.responsableStatus} → ${responsableStatus}`,
           success: false,
         },
         { status: 400 }
       )
     }
 
+    if (adminStatus && !validAdminTransitions[devis.adminStatus]?.includes(adminStatus)) {
+      return NextResponse.json(
+        {
+          error: `Invalid admin status transition: ${devis.adminStatus} → ${adminStatus}`,
+          success: false,
+        },
+        { status: 400 }
+      )
+    }
+
+    const updateData: any = {
+      updatedAt: new Date(),
+    }
+
+    if (responsableStatus) {
+      updateData.responsableStatus = responsableStatus
+      if (responsableStatus === "APPROUVE") {
+        updateData.validatedById = userId
+      }
+    }
+
+    if (adminStatus) {
+      updateData.adminStatus = adminStatus
+      if (adminStatus === "VALIDE") {
+        updateData.adminValidatedById = userId
+      }
+    }
+
     const updatedDevis = await prisma.devis.update({
       where: { id: devisId },
-      data: {
-        status,
-        validatedById: validatedById || undefined,
-        updatedAt: new Date(),
-      },
+      data: updateData,
       include: {
         items: {
           include: {
             product: {
-              select: {
-                id: true,
-                name: true,
-                price: true,
-              },
+              select: { id: true, name: true, price: true },
             },
           },
         },
         createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
+          select: { id: true, firstName: true, lastName: true, email: true },
         },
         validatedBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
+          select: { id: true, firstName: true, lastName: true },
+        },
+        adminValidatedBy: {
+          select: { id: true, firstName: true, lastName: true },
         },
         etablissement: {
-          select: {
-            id: true,
-            name: true,
-          },
+          select: { id: true, name: true },
         },
       },
     })
@@ -641,7 +656,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: `Devis updated with status ${status}`,
+        message: "Devis updated successfully",
         data: formatDevisResponse(updatedDevis, true),
       },
       { status: 200 }
@@ -672,7 +687,6 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Validate user
     const userValidation = await validateUserAccess(userId)
     if (!userValidation.valid) {
       return NextResponse.json(
@@ -685,7 +699,7 @@ export async function DELETE(request: NextRequest) {
 
     const devis = await prisma.devis.findUnique({
       where: { id: devisId },
-      select: { status: true, createdById: true },
+      select: { responsableStatus: true, createdById: true },
     })
 
     if (!devis) {
@@ -695,7 +709,6 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Only check ownership if user is not admin
     if (!isAdmin && devis.createdById !== userId) {
       return NextResponse.json(
         { error: "Unauthorized access", success: false },
@@ -703,7 +716,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    if (devis.status !== "BROUILLON") {
+    if (devis.responsableStatus !== "EN_ATTENTE") {
       return NextResponse.json(
         {
           error: "Only draft devis can be deleted",

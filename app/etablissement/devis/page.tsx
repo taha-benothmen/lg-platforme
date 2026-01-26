@@ -48,7 +48,7 @@ type DevisItem = {
   clientAddr?: string
   clientEnterprise?: string
   total: string
-  status: "BROUILLON" | "ENVOYE" | "APPROUVE" | "SUSPENDU" | "REJETE" | "ACCEPTE"
+  status: "EN_ATTENTE" | "ENVOYE" | "APPROUVE" | "SUSPENDU" | "REJETE" | "ACCEPTE"
   createdAt: string
   updatedAt: string
   itemsCount: number
@@ -90,7 +90,7 @@ type SubEstablishment = {
 }
 
 const STATUS_COLORS: Record<string, { label: string; variant: string }> = {
-  BROUILLON: { label: "Brouillon", variant: "secondary" },
+  EN_ATTENTE: { label: "EN_ATTENTE", variant: "secondary" },
   ENVOYE: { label: "Envoyé", variant: "outline" },
   APPROUVE: { label: "Approuvé", variant: "default" },
   SUSPENDU: { label: "Suspendu", variant: "outline" },
@@ -376,7 +376,7 @@ export default function DevisPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">Tous les statuts</SelectItem>
-                    <SelectItem value="BROUILLON">Brouillon</SelectItem>
+                    <SelectItem value="EN_ATTENTE">EN_ATTENTE</SelectItem>
                     <SelectItem value="ENVOYE">Envoyé</SelectItem>
                     <SelectItem value="APPROUVE">Approuvé</SelectItem>
                     <SelectItem value="SUSPENDU">Suspendu</SelectItem>
@@ -573,7 +573,7 @@ export default function DevisPage() {
                           </Button>
                         </div>
 
-                        {selectedDevis.status === "BROUILLON" && (
+                        {selectedDevis.status === "EN_ATTENTE" && (
                           <Button variant="destructive" className="w-full" onClick={() => handleDeleteDevis(selectedDevis.id)} disabled={deletingId !== null || updatingStatus}>
                             {deletingId !== null ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
                             Supprimer le devis
