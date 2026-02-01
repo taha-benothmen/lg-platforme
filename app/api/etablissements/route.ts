@@ -3,23 +3,44 @@ import { prisma } from "@/lib/prisma"
 
 type UserRole = "ADMIN" | "RESPONSABLE" | "ETABLISSEMENT"
 
-// GET - Récupérer tous les utilisateurs ou établissements
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const type = searchParams.get("type")
   const parentId = searchParams.get("parentId")
   const userId = searchParams.get("userId")
+  
+  // Pagination parameters
+  const page = parseInt(searchParams.get("page") || "1")
+  const limit = parseInt(searchParams.get("limit") || "20")
 
-  // Si type=users, retourner les utilisateurs
+  // ✅ OPTIMIZED: If type=users, return ONLY users with pagination (no count aggregations)
   if (type === "users") {
     try {
+      const skip = (page - 1) * limit
+      
+      // ✅ Single count query for total
+      const total = await prisma.user.count()
+
+      // ✅ Single fetch query with LIMIT/OFFSET
       const users = await prisma.user.findMany({
         orderBy: {
           createdAt: "desc",
         },
+        skip,
+        take: limit,
       })
 
-      return NextResponse.json(users)
+      console.log(`📊 Users API: Page ${page}/${Math.ceil(total / limit)}, Total: ${total}, Loaded: ${users.length}`)
+
+      return NextResponse.json({
+        data: users,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      })
     } catch (error) {
       console.error("Error fetching users:", error)
       return NextResponse.json(
@@ -29,42 +50,36 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Logique hiérarchique pour les établissements
+  // ✅ HIERARCHICAL LOGIC FOR ÉTABLISSEMENTS (WITHOUT COUNTS!)
   try {
-    // Si parentId est fourni, retourner les enfants de ce parent
+    // If parentId is provided, return children of this parent
     if (parentId && parentId !== "null") {
       const etablissements = await prisma.etablissement.findMany({
         where: {
           parentId: parentId,
+        },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          phone: true,
+          email: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+          parentId: true,
         },
         orderBy: {
           createdAt: "desc",
         },
       })
 
-      const etablissementsWithData = await Promise.all(
-        etablissements.map(async (etab) => {
-          const usersCount = await prisma.user.count({
-            where: { etablissementId: etab.id },
-          })
-          const childrenCount = await prisma.etablissement.count({
-            where: { parentId: etab.id },
-          })
-          
-          return {
-            ...etab,
-            _count: {
-              users: usersCount,
-              children: childrenCount,
-            },
-          }
-        })
-      )
+      console.log(`📊 Établissements API (children): Loaded ${etablissements.length} for parent ${parentId}`)
 
-      return NextResponse.json(etablissementsWithData)
+      return NextResponse.json(etablissements)
     }
 
-    // Si userId est fourni, récupérer l'établissement de l'utilisateur et sa logique
+    // If userId is provided, get user's établissement logic
     if (userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -84,7 +99,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json([])
       }
 
-      // Si l'utilisateur a un parentId (c'est un enfant), retourner seulement son établissement
+      // If user's établissement has a parentId (it's a child), return only it
       if (userEtab.parentId) {
         return NextResponse.json([
           {
@@ -95,67 +110,56 @@ export async function GET(request: NextRequest) {
         ])
       }
 
-      // Si l'utilisateur n'a pas de parentId (c'est un parent), retourner tous ses enfants
+      // If user's établissement has no parentId (it's a parent), return all children
       const childEtablissements = await prisma.etablissement.findMany({
         where: {
           parentId: userEtab.id,
+        },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          phone: true,
+          email: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+          parentId: true,
         },
         orderBy: {
           createdAt: "desc",
         },
       })
 
-      const etablissementsWithData = await Promise.all(
-        childEtablissements.map(async (etab) => {
-          const usersCount = await prisma.user.count({
-            where: { etablissementId: etab.id },
-          })
-          const childrenCount = await prisma.etablissement.count({
-            where: { parentId: etab.id },
-          })
-          
-          return {
-            ...etab,
-            _count: {
-              users: usersCount,
-              children: childrenCount,
-            },
-          }
-        })
-      )
+      console.log(`📊 Établissements API (user): Loaded ${childEtablissements.length}`)
 
-      return NextResponse.json(etablissementsWithData)
+      return NextResponse.json(childEtablissements)
     }
 
-    // Par défaut, retourner tous les établissements
+    // ✅ DEFAULT: Return all établissements (WITHOUT expensive counts!)
+    // This is called ONCE on page load
     const allEtablissements = await prisma.etablissement.findMany({
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        email: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        parentId: true,
+      },
       orderBy: {
         createdAt: "desc",
       },
     })
 
-    const etablissementsWithData = await Promise.all(
-      allEtablissements.map(async (etab) => {
-        const usersCount = await prisma.user.count({
-          where: { etablissementId: etab.id },
-        })
-        const childrenCount = await prisma.etablissement.count({
-          where: { parentId: etab.id },
-        })
-        
-        return {
-          ...etab,
-          _count: {
-            users: usersCount,
-            children: childrenCount,
-          },
-        }
-      })
-    )
+    console.log(`📊 Établissements API: Loaded ${allEtablissements.length} établissements (NO counts)`)
 
-    return NextResponse.json(etablissementsWithData)
+    return NextResponse.json(allEtablissements)
   } catch (error) {
-    console.error("Error fetching etablissements:", error)
+    console.error("Error fetching établissements:", error)
     return NextResponse.json(
       { error: "Erreur lors du chargement des établissements" },
       { status: 500 }
@@ -163,13 +167,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Créer un nouvel utilisateur ou établissement
+// POST - Create user or établissement
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { type } = body
 
-    // Si type=user, créer un utilisateur
+    // If type=user, create a user
     if (type === "user") {
       const {
         email,
@@ -231,7 +235,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(user, { status: 201 })
     }
 
-    // Sinon créer un établissement
+    // Otherwise create an établissement
     const { name, address, email, phone, parentId } = body
 
     if (!name || !address) {

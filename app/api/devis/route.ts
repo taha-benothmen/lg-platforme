@@ -118,7 +118,7 @@ function formatDevisResponse(devis: any, includeItems: boolean = false) {
   }
 }
 
-// GET - Retrieve quotes with optional filters
+// ✅ OPTIMIZED: GET with pagination
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -127,6 +127,10 @@ export async function GET(request: NextRequest) {
     const devisId = searchParams.get("id")
     const userId = searchParams.get("userId")
     const etablissementFilter = searchParams.get("etablissementId")
+    
+    // ✅ NEW: Pagination parameters
+    const page = parseInt(searchParams.get("page") || "1")
+    const limit = parseInt(searchParams.get("limit") || "20")
 
     if (!userId) {
       return NextResponse.json(
@@ -140,7 +144,6 @@ export async function GET(request: NextRequest) {
     if (!userValidation.valid) {
       return NextResponse.json(
         { error: userValidation.error, success: false },
-        
       )
     }
 
@@ -249,7 +252,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get all devis with filters
+    // Get all devis with filters and pagination
     const whereClause: any = {}
 
     if (!isAdmin && etablissementIds.length > 0) {
@@ -269,6 +272,14 @@ export async function GET(request: NextRequest) {
     if (etablissementFilter && etablissementFilter !== "ALL" && !isAdmin) {
       whereClause.etablissementId = etablissementFilter
     }
+
+    // ✅ NEW: Calculate pagination
+    const skip = (page - 1) * limit
+    
+    // ✅ NEW: Get total count
+    const total = await prisma.devis.count({
+      where: whereClause,
+    })
 
     const devis = await prisma.devis.findMany({
       where: whereClause,
@@ -316,12 +327,22 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: "desc",
       },
+      skip,
+      take: limit,
     })
+
+    console.log(`📊 Devis: Page ${page}/${Math.ceil(total / limit)}, Total: ${total}`)
 
     return NextResponse.json(
       {
         success: true,
         data: devis.map((d) => formatDevisResponse(d)),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
       },
       { status: 200 }
     )
@@ -622,7 +643,7 @@ export async function PUT(request: NextRequest) {
 
     if (adminStatus) {
       updateData.adminStatus = adminStatus
-      if (adminStatus === "VALIDE") {
+      if (adminStatus === "APPROUVE") {
         updateData.adminValidatedById = userId
       }
     }

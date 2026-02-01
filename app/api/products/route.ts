@@ -3,34 +3,51 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-// GET - Récupérer tous les produits
-export async function GET() {
+// ✅ OPTIMIZED: GET with pagination
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const page = parseInt(searchParams.get("page") || "1")
+    const limit = parseInt(searchParams.get("limit") || "12")
+    const categoryId = searchParams.get("categoryId")
+
+    console.log(`📦 API Request: Page ${page}, Limit ${limit}, Category: ${categoryId || "all"}`)
+
+    // Calculate skip
+    const skip = (page - 1) * limit
+
+    // Build where clause
+    const where: any = {}
+    if (categoryId && categoryId !== "all") {
+      where.categoryId = parseInt(categoryId)
+    }
+
+    // ✅ OPTIMIZED: Only fetch products for current page
     const products = await prisma.product.findMany({
+      where,
       include: {
         category: true,
       },
+      skip,
+      take: limit,
       orderBy: {
         id: "desc",
       },
     })
 
-    console.log(`📦 Total produits: ${products.length}`)
-    
-    // Convertir Bytes (Buffer) en data URLs
+    // Get total count for pagination
+    const total = await prisma.product.count({ where })
+
+    // ✅ Convert images for the page
     const productsWithImages = products.map((product: any, index: number) => {
       let imageDataUrl = null
-      
-      console.log(`[${index}] ${product.name}:`)
-      console.log(`  - image exists: ${!!product.image}`)
-      console.log(`  - imageType: ${product.imageType}`)
-      
+
       if (product.image) {
         try {
           // Prisma renvoie les Bytes comme Buffer
           if (Buffer.isBuffer(product.image)) {
             const base64String = product.image.toString('base64')
-            
+
             // Si imageType est null, essayer de le détecter
             let mimeType = product.imageType
             if (!mimeType && product.image.length >= 4) {
@@ -39,26 +56,21 @@ export async function GET() {
               else if (header.startsWith('89504e47')) mimeType = 'image/png'
               else if (header.startsWith('47494638')) mimeType = 'image/gif'
               else if (header.startsWith('52494646')) mimeType = 'image/webp'
-              else mimeType = 'image/jpeg' // Par défaut
-              
-              console.log(`  ⚠️  imageType NULL - Détecté: ${mimeType}`)
+              else mimeType = 'image/jpeg'
             }
-            
+
             imageDataUrl = `data:${mimeType};base64,${base64String}`
-            console.log(`  ✅ Buffer converti en Base64`)
           }
         } catch (e) {
-          console.error(`  ❌ Erreur conversion: ${e}`)
+          console.error(`Erreur conversion image ${product.name}:`, e)
         }
-      } else {
-        console.log(`  ❌ Pas d'image`)
       }
 
       return {
         id: product.id,
         name: product.name,
         description: product.description,
-        price: parseFloat(product.price.toString()), // Convertir Decimal en number
+        price: parseFloat(product.price.toString()),
         currency: product.currency,
         stock: product.stock,
         image: imageDataUrl,
@@ -71,10 +83,19 @@ export async function GET() {
       }
     })
 
-    console.log(`✅ ${products.length} produits chargés avec images`)
-    return NextResponse.json(productsWithImages)
+    console.log(`✅ Loaded ${products.length} products (Page ${page}/${Math.ceil(total / limit)}, Total: ${total})`)
+
+    return NextResponse.json({
+      data: productsWithImages,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    })
   } catch (error) {
-    console.error("Error fetching products:", error)
+    console.error("❌ API Error:", error)
     return NextResponse.json(
       { error: "Failed to fetch products" },
       { status: 500 }
@@ -152,7 +173,8 @@ export async function POST(request: NextRequest) {
         price: parseFloat(price),
         currency: currency || "TND",
         stock: parseInt(stock),
-        image: imageBuffer ? imageBuffer.toString('base64') : null, // Stocker directement le Buffer
+        image: imageBuffer,
+        imageType: imageType,
         categoryId: finalCategoryId,
       },
       include: {
@@ -161,6 +183,18 @@ export async function POST(request: NextRequest) {
     })
 
     // Convertir pour la réponse
+    let imageDataUrl = null
+    if (product.image && product.imageType) {
+      try {
+        const base64String = Buffer.isBuffer(product.image)
+          ? product.image.toString('base64')
+          : product.image
+        imageDataUrl = `data:${product.imageType};base64,${base64String}`
+      } catch (e) {
+        console.error("Error converting image for response:", e)
+      }
+    }
+
     const productWithImage = {
       id: product.id,
       name: product.name,
@@ -168,9 +202,7 @@ export async function POST(request: NextRequest) {
       price: parseFloat(product.price.toString()),
       currency: product.currency,
       stock: product.stock,
-      image: product.image && product.imageType
-        ? `data:${product.imageType};base64,${product.image.toString('base64')}`
-        : null,
+      image: imageDataUrl,
       imageType: product.imageType,
       isActive: product.isActive,
       categoryId: product.categoryId,

@@ -30,6 +30,8 @@ import {
   AlertCircle,
   CheckCircle2,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import {
   Select,
@@ -38,6 +40,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+
+// ✅ NEW: Pagination constant
+const ITEMS_PER_PAGE = 6
 
 type DevisItem = {
   id: string
@@ -104,19 +109,6 @@ const STATUS_LABELS: Record<string, string> = {
   REJETE: "Rejeté",
 }
 
-const STATUS_COLORS: Record<string, { label: string; variant: string; bg: string; text: string }> = {
-  EN_ATTENTE: { label: "En attente", variant: "secondary", bg: "bg-gray-100", text: "text-gray-900" },
-  APPROUVE: { label: "Approuvé", variant: "default", bg: "bg-green-100", text: "text-green-900" },
-  SUSPENDU: { label: "Suspendu", variant: "outline", bg: "bg-yellow-100", text: "text-yellow-900" },
-  REJETE: { label: "Rejeté", variant: "destructive", bg: "bg-red-100", text: "text-red-900" },
-}
-
-const STATUS_BUTTON_COLORS: Record<string, string> = {
-  APPROUVE: "bg-green-100 hover:bg-green-200 text-green-900 border-0",
-  SUSPENDU: "bg-yellow-100 hover:bg-yellow-200 text-yellow-900 border-0",
-  REJETE: "bg-red-100 hover:bg-red-200 text-red-900 border-0",
-  default: "bg-gray-100 hover:bg-gray-200 text-gray-900 border-0",
-}
 const STATUS_CLASSES: Record<string, string> = {
   EN_ATTENTE: "bg-yellow-100 text-yellow-900",
   APPROUVE: "bg-green-100 text-green-900",
@@ -142,6 +134,9 @@ export default function DevisPage() {
     title: "",
     description: ""
   })
+  
+  // ✅ NEW: Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
 
   const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
     setAlert({ show: true, type, title, description })
@@ -177,9 +172,10 @@ export default function DevisPage() {
   // Reload when filters change
   useEffect(() => {
     if (userId) {
+      setCurrentPage(1) // Reset to page 1 when filters change
       loadDevis()
     }
-  }, [responsableStatusFilter, etablissementFilter])
+  }, [responsableStatusFilter, etablissementFilter, search])
 
   const loadDevis = async () => {
     try {
@@ -229,6 +225,23 @@ export default function DevisPage() {
 
     return matchesSearch
   })
+
+  // ✅ NEW: Pagination calculations
+  const totalPages = Math.ceil(filteredDevis.length / ITEMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+  const endIndex = startIndex + ITEMS_PER_PAGE
+  const paginatedDevis = filteredDevis.slice(startIndex, endIndex)
+
+  // ✅ NEW: Page navigation
+  const goToPage = (page: number) => {
+    const pageNum = Math.max(1, Math.min(page, totalPages))
+    setCurrentPage(pageNum)
+    // Scroll to top of devis list
+    const devisSection = document.getElementById("devis-list-section")
+    if (devisSection) {
+      devisSection.scrollIntoView({ behavior: "smooth" })
+    }
+  }
 
   const handleDeleteDevis = async (id: string) => {
     if (!userId) {
@@ -301,7 +314,6 @@ export default function DevisPage() {
         throw new Error(result.error || "Failed to update devis status")
       }
 
-      // Update the devis in the list
       setDevis((prev) =>
         prev.map((d) =>
           d.id === id
@@ -315,7 +327,6 @@ export default function DevisPage() {
         )
       )
 
-      // Update selected devis
       if (selectedDevis && selectedDevis.id === id) {
         setSelectedDevis((prev) =>
           prev
@@ -480,106 +491,176 @@ export default function DevisPage() {
               </div>
             </div>
 
-            {loading ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : filteredDevis.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-center">
-                <p className="text-muted-foreground mb-4">Aucun devis trouvé</p>
-              </div>
-            ) : (
-              <div className="grid gap-4">
-                {filteredDevis.map((d) => (
-                  <Card
-                    key={d.id}
-                    className="card-interactive cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => setSelectedDevis(d)}
-                  >
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                      <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                        <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
-                        <span className="truncate">Devis {d.id.slice(0, 8)}</span>
-                      </CardTitle>
-                      <div className="flex gap-2">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs font-semibold text-muted-foreground">Responsable</span>
-                          <Badge variant={getStatusBadgeVariant(d.responsableStatus)}
-                           className={STATUS_CLASSES[d.responsableStatus]}>
-                            {STATUS_LABELS[d.responsableStatus] || d.responsableStatus}
-                          </Badge>
-                        </div>
-                        {d.responsableStatus === "APPROUVE" && (
-                          <div className="flex flex-col gap-1">
-                            <span className="text-xs font-semibold text-muted-foreground">Admin</span>
-                            <Badge variant={getStatusBadgeVariant(d.adminStatus)}
-                             className={STATUS_CLASSES[d.adminStatus]}>
-                              {STATUS_LABELS[d.adminStatus] || d.adminStatus}
-                            </Badge>
+            {/* Devis List Section */}
+            <div id="devis-list-section">
+              {loading ? (
+                <div className="flex items-center justify-center h-40">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredDevis.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-center">
+                  <p className="text-muted-foreground mb-4">Aucun devis trouvé</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Devis Grid */}
+                  <div className="grid gap-4">
+                    {paginatedDevis.map((d) => (
+                      <Card
+                        key={d.id}
+                        className="card-interactive cursor-pointer hover:shadow-md transition-shadow"
+                        onClick={() => setSelectedDevis(d)}
+                      >
+                        <CardHeader className="flex flex-row items-center justify-between pb-3">
+                          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                            <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
+                            <span className="truncate">Devis {d.id.slice(0, 8)}</span>
+                          </CardTitle>
+                          <div className="flex gap-2">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs font-semibold text-muted-foreground">Responsable</span>
+                              <Badge variant={getStatusBadgeVariant(d.responsableStatus)}
+                               className={STATUS_CLASSES[d.responsableStatus]}>
+                                {STATUS_LABELS[d.responsableStatus] || d.responsableStatus}
+                              </Badge>
+                            </div>
+                            {d.responsableStatus === "APPROUVE" && (
+                              <div className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold text-muted-foreground">Admin</span>
+                                <Badge variant={getStatusBadgeVariant(d.adminStatus)}
+                                 className={STATUS_CLASSES[d.adminStatus]}>
+                                  {STATUS_LABELS[d.adminStatus] || d.adminStatus}
+                                </Badge>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{d.clientName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {d.clientEmail}
+                              </p>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {new Date(d.createdAt).toLocaleDateString("fr-FR")}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <p className="font-bold text-lg shrink-0">
+                                {parseFloat(d.total).toFixed(2)} TND
+                              </p>
+                              <Button 
+                                size="icon" 
+                                variant="outline" 
+                                className="shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDownloadPDF(d)
+                                }}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                size="icon" 
+                                variant="outline" 
+                                className="shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleShareDevis(d)
+                                }}
+                              >
+                                <Send className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t grid grid-cols-2 gap-2 text-xs">
+                            {d.createdBy && (
+                              <div>
+                                <p className="font-semibold text-muted-foreground">Créateur</p>
+                                <p className="text-gray-700">{d.createdBy.firstName} {d.createdBy.lastName}</p>
+                              </div>
+                            )}
+                            {d.etablissement && (
+                              <div>
+                                <p className="font-semibold text-muted-foreground">Établissement</p>
+                                <p className="text-gray-700">{d.etablissement.name}</p>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+
+                  {/* ✅ NEW: Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-6 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        Page {currentPage} sur {totalPages}
                       </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium truncate">{d.clientName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {d.clientEmail}
-                          </p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {new Date(d.createdAt).toLocaleDateString("fr-FR")}
-                          </p>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="gap-2"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                          Précédent
+                        </Button>
+
+                        {/* ✅ Smart page numbers */}
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                            const showPage =
+                              page <= 2 ||
+                              page >= totalPages - 1 ||
+                              (page >= currentPage - 1 && page <= currentPage + 1)
+
+                            return (
+                              <div key={page}>
+                                {showPage ? (
+                                  <Button
+                                    variant={currentPage === page ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => goToPage(page)}
+                                    className="w-10"
+                                  >
+                                    {page}
+                                  </Button>
+                                ) : page === 3 ? (
+                                  <span className="px-2 text-muted-foreground">...</span>
+                                ) : null}
+                              </div>
+                            )
+                          })}
                         </div>
 
-                        <div className="flex items-center gap-3">
-                          <p className="font-bold text-lg shrink-0">
-                            {parseFloat(d.total).toFixed(2)} TND
-                          </p>
-                          <Button 
-                            size="icon" 
-                            variant="outline" 
-                            className="shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDownloadPDF(d)
-                            }}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            size="icon" 
-                            variant="outline" 
-                            className="shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleShareDevis(d)
-                            }}
-                          >
-                            <Send className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className="gap-2"
+                        >
+                          Suivant
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
                       </div>
 
-                      <div className="pt-2 border-t grid grid-cols-2 gap-2 text-xs">
-                        {d.createdBy && (
-                          <div>
-                            <p className="font-semibold text-muted-foreground">Créateur</p>
-                            <p className="text-gray-700">{d.createdBy.firstName} {d.createdBy.lastName}</p>
-                          </div>
-                        )}
-                        {d.etablissement && (
-                          <div>
-                            <p className="font-semibold text-muted-foreground">Établissement</p>
-                            <p className="text-gray-700">{d.etablissement.name}</p>
-                          </div>
-                        )}
+                      <div className="text-sm text-muted-foreground">
+                        Affichage {startIndex + 1} à {Math.min(endIndex, filteredDevis.length)} sur {filteredDevis.length}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </SidebarInset>
       </div>
@@ -771,7 +852,7 @@ export default function DevisPage() {
                 )}
               </div>
 
-              {/* FOOTER FIXED - VERSION CORRIGÉE */}
+              {/* FOOTER FIXED */}
               <div className="px-6 py-4 border-t space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                   <Button
@@ -795,7 +876,6 @@ export default function DevisPage() {
                   </Button>
                 </div>
 
-                {/* ✅ ÉTAT: EN_ATTENTE - Affiche Approuver, Suspendre, Rejeter */}
                 {selectedDevis.responsableStatus === "EN_ATTENTE" && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
                     <Button
@@ -839,7 +919,6 @@ export default function DevisPage() {
                   </div>
                 )}
 
-                {/* ✅ ÉTAT: SUSPENDU - Affiche Approuver et Rejeter */}
                 {selectedDevis.responsableStatus === "SUSPENDU" && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                     <Button
@@ -870,7 +949,6 @@ export default function DevisPage() {
                   </div>
                 )}
 
-                {/* ✅ ÉTAT: APPROUVE - Affiche Suspendre et Rejeter */}
                 {selectedDevis.responsableStatus === "APPROUVE" && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
                     <Button
@@ -901,7 +979,6 @@ export default function DevisPage() {
                   </div>
                 )}
 
-                {/* ✅ ÉTAT: REJETE - Pas de boutons d'action (état final) */}
                 {selectedDevis.responsableStatus === "REJETE" && (
                   <div className="bg-red-50 p-3 rounded-lg border border-red-200">
                     <p className="text-sm text-red-700 font-semibold">

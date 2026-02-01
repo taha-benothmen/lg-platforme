@@ -33,7 +33,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Loader2, Download, Search, Filter, AlertCircle, CheckCircle2, X, Eye, Check, XCircle } from "lucide-react"
+import { Loader2, Download, Search, Filter, AlertCircle, CheckCircle2, X, Eye, Check, XCircle, ChevronLeft, ChevronRight } from "lucide-react"
 
 type DevisItem = {
   id: string
@@ -141,9 +141,13 @@ Créé par: ${quote.createdBy?.firstName} ${quote.createdBy?.lastName}
   URL.revokeObjectURL(url)
 }
 
+// ✅ NEW: Pagination constant
+const ITEMS_PER_PAGE = 20
+
 export default function AdminDevisPage() {
   const [devis, setDevis] = useState<DevisItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [responsableStatusFilter, setResponsableStatusFilter] = useState("ALL")
   const [adminStatusFilter, setAdminStatusFilter] = useState("ALL")
@@ -156,15 +160,18 @@ export default function AdminDevisPage() {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [isClient, setIsClient] = useState(false)
+  
+  // ✅ NEW: Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalDevis, setTotalDevis] = useState(0)
 
   // ✅ FIX 1: Initialize client-side only and extract userId from localStorage
   useEffect(() => {
     setIsClient(true)
     
-    // Try multiple ways to get userId
     let id = localStorage.getItem("userId")
     
-    // If not found, try to get it from userSession
     if (!id) {
       const userSessionStr = localStorage.getItem("userSession")
       if (userSessionStr) {
@@ -208,14 +215,15 @@ export default function AdminDevisPage() {
     loadEtablissements()
   }, [])
 
-  // ✅ FIX 2: Only load devis when userId is available
+  // ✅ NEW: Load devis with pagination
   useEffect(() => {
     if (userId) {
-      loadAllDevis()
+      setCurrentPage(1) // Reset to first page when filters change
+      loadAllDevis(1)
     }
   }, [userId, responsableStatusFilter, adminStatusFilter, etablissementFilter])
 
-  const loadAllDevis = async () => {
+  const loadAllDevis = async (page: number = 1) => {
     if (!userId) {
       console.warn("userId not available, skipping loadAllDevis")
       setLoading(false)
@@ -223,9 +231,13 @@ export default function AdminDevisPage() {
     }
 
     try {
-      setLoading(true)
+      const isFirstPage = page === 1
+      isFirstPage ? setLoading(true) : setIsLoadingMore(true)
+      
       const url = new URL("/api/devis", window.location.origin)
       url.searchParams.set("userId", userId)
+      url.searchParams.set("page", page.toString())
+      url.searchParams.set("limit", ITEMS_PER_PAGE.toString())
 
       if (responsableStatusFilter !== "ALL") {
         url.searchParams.set("responsableStatus", responsableStatusFilter)
@@ -239,24 +251,26 @@ export default function AdminDevisPage() {
         url.searchParams.set("etablissementId", etablissementFilter)
       }
 
-      console.log("Fetching devis with URL:", url.toString())
+      console.log(`📊 Loading page ${page}...`)
       const response = await fetch(url.toString())
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || `HTTP ${response.status}: Erreur lors du chargement des devis`)
+        throw new Error(errorData.error || `HTTP ${response.status}`)
       }
 
       const result = await response.json()
-      console.log("Devis loaded successfully:", result)
+      console.log(`✅ Loaded page ${page}:`, result)
 
-      // ✅ FIX 3: Proper response handling
-      if (Array.isArray(result.data)) {
+      if (result.data && Array.isArray(result.data)) {
         setDevis(result.data)
-      } else if (result.data) {
-        setDevis([result.data])
+        setTotalDevis(result.pagination?.total || 0)
+        setTotalPages(result.pagination?.totalPages || 1)
+        setCurrentPage(page)
       } else {
         setDevis([])
+        setTotalDevis(0)
+        setTotalPages(1)
       }
     } catch (error) {
       console.error("Erreur:", error)
@@ -268,6 +282,7 @@ export default function AdminDevisPage() {
       setDevis([])
     } finally {
       setLoading(false)
+      setIsLoadingMore(false)
     }
   }
 
@@ -327,9 +342,9 @@ export default function AdminDevisPage() {
       const result = await response.json()
       setSelectedDevis(result.data)
 
-      // Reload devis list
-      await loadAllDevis()
-      showAlert("success", "Succès", `Statut admin mis à jour`)
+      // Reload current page
+      await loadAllDevis(currentPage)
+      showAlert("success", "Succès", `Statut mis à jour`)
     } catch (error) {
       showAlert("error", "Erreur", error instanceof Error ? error.message : "Impossible de mettre à jour le devis")
     } finally {
@@ -337,20 +352,11 @@ export default function AdminDevisPage() {
     }
   }
 
-  const filteredDevis = devis.filter((d) => {
-    const searchLower = search.toLowerCase()
-    const matchesSearch =
-      d.id.toLowerCase().includes(searchLower) ||
-      d.clientName.toLowerCase().includes(searchLower) ||
-      d.clientEmail.toLowerCase().includes(searchLower) ||
-      d.clientPhone?.toLowerCase().includes(searchLower) ||
-      (d.createdBy?.firstName + " " + d.createdBy?.lastName).toLowerCase().includes(searchLower) ||
-      d.etablissement?.name.toLowerCase().includes(searchLower) ||
-      new Date(d.createdAt).toLocaleDateString("fr-FR").includes(searchLower) ||
-      parseFloat(d.total).toFixed(2).includes(searchLower)
-
-    return matchesSearch
-  })
+  // ✅ NEW: Handle page changes
+  const goToPage = (page: number) => {
+    const pageNum = Math.max(1, Math.min(page, totalPages))
+    loadAllDevis(pageNum)
+  }
 
   // Group establishments by parent
   const parentEtabs = etablissements.filter(e => !e.parentId)
@@ -452,16 +458,6 @@ export default function AdminDevisPage() {
                     ))}
                   </SelectContent>
                 </Select>
-
-                <div className="relative w-full lg:flex-1">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Rechercher..."
-                    className="pl-10"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
               </div>
             </div>
 
@@ -470,100 +466,168 @@ export default function AdminDevisPage() {
                 <p className="text-muted-foreground">Authentification en cours...</p>
               </div>
             ) : loading ? (
-              <div className="flex items-center justify-center h-40">
+              <div className="flex items-center justify-center h-40 gap-2">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <span>Chargement des devis...</span>
               </div>
-            ) : filteredDevis.length === 0 ? (
+            ) : devis.length === 0 ? (
               <div className="flex items-center justify-center h-40">
                 <p className="text-muted-foreground">Aucun devis trouvé</p>
               </div>
             ) : (
-              <div className="rounded-lg border bg-white overflow-hidden">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableCaption>
-                      Total: {filteredDevis.length} devis
-                    </TableCaption>
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-white overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableCaption>
+                        Total: {totalDevis} devis
+                      </TableCaption>
 
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>ID</TableHead>
-                        <TableHead>Client</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Total</TableHead>
-                        <TableHead>Créé par</TableHead>
-                        <TableHead>Établissement</TableHead>
-                        <TableHead>Responsable</TableHead>
-                        <TableHead>Admin</TableHead>
-                        <TableHead className="text-center">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-
-                    <TableBody>
-                      {filteredDevis.map((q) => (
-                        <TableRow key={q.id} className="hover:bg-gray-50">
-                          <TableCell className="font-medium text-sm">{q.id.slice(0, 8)}</TableCell>
-                          <TableCell className="font-medium">{q.clientName}</TableCell>
-                          <TableCell className="text-sm">
-                            {new Date(q.createdAt).toLocaleDateString("fr-FR")}
-                          </TableCell>
-                          <TableCell className="font-bold">
-                            {parseFloat(q.total).toFixed(2)} TND
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {q.createdBy?.firstName} {q.createdBy?.lastName}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {q.etablissement?.name || "N/A"}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={getStatusVariant(q.responsableStatus)}
-                              className={STATUS_CLASSES[q.responsableStatus]}
-                            >
-                              {getStatusLabel(q.responsableStatus)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {/* ✅ ADMIN: Afficher le badge admin SEULEMENT si responsable est APPROUVE */}
-                            {q.responsableStatus === "APPROUVE" ? (
-                              <Badge
-                                variant={getStatusVariant(q.adminStatus)}
-                                className={STATUS_CLASSES[q.adminStatus]}
-                              >
-                                {getStatusLabel(q.adminStatus)}
-                              </Badge>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex gap-2 justify-center">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleViewDetails(q.id)}
-                                className="gap-2"
-                                title="Voir les détails"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => downloadQuote(q)}
-                                className="gap-2"
-                                title="Télécharger"
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>ID</TableHead>
+                          <TableHead>Client</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead>Créé par</TableHead>
+                          <TableHead>Établissement</TableHead>
+                          <TableHead>Responsable</TableHead>
+                          <TableHead>Admin</TableHead>
+                          <TableHead className="text-center">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+
+                      <TableBody>
+                        {devis.map((q) => (
+                          <TableRow key={q.id} className="hover:bg-gray-50">
+                            <TableCell className="font-medium text-sm">{q.id.slice(0, 8)}</TableCell>
+                            <TableCell className="font-medium">{q.clientName}</TableCell>
+                            <TableCell className="text-sm">
+                              {new Date(q.createdAt).toLocaleDateString("fr-FR")}
+                            </TableCell>
+                            <TableCell className="font-bold">
+                              {parseFloat(q.total).toFixed(2)} TND
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {q.createdBy?.firstName} {q.createdBy?.lastName}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {q.etablissement?.name || "N/A"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={getStatusVariant(q.responsableStatus)}
+                                className={STATUS_CLASSES[q.responsableStatus]}
+                              >
+                                {getStatusLabel(q.responsableStatus)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {q.responsableStatus === "APPROUVE" ? (
+                                <Badge
+                                  variant={getStatusVariant(q.adminStatus)}
+                                  className={STATUS_CLASSES[q.adminStatus]}
+                                >
+                                  {getStatusLabel(q.adminStatus)}
+                                </Badge>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex gap-2 justify-center">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleViewDetails(q.id)}
+                                  className="gap-2"
+                                  title="Voir les détails"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => downloadQuote(q)}
+                                  className="gap-2"
+                                  title="Télécharger"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
+
+                {/* ✅ NEW: Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t">
+                    <div className="text-sm text-muted-foreground">
+                      Page {currentPage} sur {totalPages}
+                      {isLoadingMore && <Loader2 className="h-4 w-4 inline animate-spin ml-2" />}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => goToPage(currentPage - 1)}
+                        disabled={currentPage === 1 || isLoadingMore}
+                        className="gap-2"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span className="hidden sm:inline">Précédent</span>
+                      </Button>
+
+                      {/* ✅ Page numbers */}
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                          const showPage =
+                            page <= 2 ||
+                            page >= totalPages - 1 ||
+                            (page >= currentPage - 1 && page <= currentPage + 1)
+
+                          return (
+                            <div key={page}>
+                              {showPage ? (
+                                <Button
+                                  variant={currentPage === page ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => goToPage(page)}
+                                  disabled={isLoadingMore}
+                                  className="w-10"
+                                >
+                                  {page}
+                                </Button>
+                              ) : page === 3 ? (
+                                <span className="px-2 text-muted-foreground">...</span>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage === totalPages || isLoadingMore}
+                        className="gap-2"
+                      >
+                        <span className="hidden sm:inline">Suivant</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="text-sm text-muted-foreground">
+                      {ITEMS_PER_PAGE} lignes/page
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -664,7 +728,6 @@ export default function AdminDevisPage() {
                     </Badge>
                   </div>
                   
-                  {/* ✅ ADMIN: Afficher le badge admin SEULEMENT si responsable est APPROUVE */}
                   {selectedDevis.responsableStatus === "APPROUVE" && (
                     <div>
                       <p className="text-sm text-muted-foreground">État Admin</p>
@@ -713,8 +776,6 @@ export default function AdminDevisPage() {
           )}
 
           <DialogFooter className="flex gap-2 flex-wrap">
-            {/* ✅ ADMIN SEULEMENT: Boutons pour approuver/rejeter le statut ADMIN */}
-            {/* Afficher SEULEMENT si: responsable APPROUVE ET admin EN_ATTENTE */}
             {selectedDevis?.responsableStatus === "APPROUVE" && selectedDevis?.adminStatus === "EN_ATTENTE" && (
               <>
                 <Button
@@ -737,7 +798,6 @@ export default function AdminDevisPage() {
               </>
             )}
 
-            {/* Message informatif si pas d'action possible */}
             {selectedDevis?.responsableStatus !== "APPROUVE" && selectedDevis?.responsableStatus !== "REJETE" && (
               <div className="w-full text-sm text-muted-foreground italic">
                 En attente de l'approbation du Responsable...

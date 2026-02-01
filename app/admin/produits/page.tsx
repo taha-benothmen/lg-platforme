@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { EyeOff, Trash2, Edit, Upload, Loader2, Plus, CheckCircle2, AlertCircle, X } from "lucide-react"
+import { EyeOff, Trash2, Edit, Upload, Loader2, Plus, CheckCircle2, AlertCircle, X, ChevronLeft, ChevronRight } from "lucide-react"
 
 interface Product {
   id: number
@@ -64,6 +64,8 @@ interface ConfirmDialog {
   productId: number | null
 }
 
+const ITEMS_PER_PAGE = 12
+
 export default function ProduitsPage() {
   const router = useRouter()
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null)
@@ -73,8 +75,14 @@ export default function ProduitsPage() {
   const [hiddenProducts, setHiddenProducts] = useState<Set<number>>(new Set())
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [alertMessage, setAlertMessage] = useState<AlertMessage | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({ isOpen: false, productId: null })
+  
+  // ✅ OPTIMIZED: API-based pagination
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalProducts, setTotalProducts] = useState(0)
   
   const [editForm, setEditForm] = useState({
     id: 0,
@@ -88,9 +96,12 @@ export default function ProduitsPage() {
   const [editImagePreview, setEditImagePreview] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchProducts()
     fetchCategories()
   }, [])
+
+  useEffect(() => {
+    fetchProducts(currentPage)
+  }, [currentPage, selectedCategory])
 
   useEffect(() => {
     if (alertMessage) {
@@ -103,19 +114,33 @@ export default function ProduitsPage() {
     setAlertMessage({ type, title, message })
   }
 
-  const fetchProducts = async () => {
+  // ✅ OPTIMIZED: Fetch from API with pagination
+  const fetchProducts = async (page: number) => {
     try {
-      setIsLoading(true)
-      const response = await fetch("/api/products")
+      setIsLoadingMore(page !== 1)
+      const categoryParam = selectedCategory !== "all" ? `&categoryId=${selectedCategory}` : ""
+      
+      console.log(`📡 Fetching page ${page}${categoryParam}`)
+      
+      const response = await fetch(
+        `/api/products?page=${page}&limit=${ITEMS_PER_PAGE}${categoryParam}`
+      )
+      
       if (!response.ok) throw new Error("Erreur lors du chargement")
-      const data = await response.json()
-      console.log("📦 Produits chargés:", data.length)
-      setProductsList(data)
+      
+      const result = await response.json()
+      console.log(`✅ Loaded page ${page}: ${result.data.length} products, Total: ${result.pagination.total}`)
+      
+      setProductsList(result.data)
+      setTotalProducts(result.pagination.total)
+      setTotalPages(result.pagination.totalPages)
+      setIsLoading(false)
     } catch (error) {
       console.error("Erreur:", error)
       showAlert("error", "Erreur", "Erreur lors du chargement des produits")
-    } finally {
       setIsLoading(false)
+    } finally {
+      setIsLoadingMore(false)
     }
   }
 
@@ -262,18 +287,19 @@ export default function ProduitsPage() {
     }
   }
 
-  const filteredProducts = productsList.filter((p) => {
-    if (selectedCategory === "all") return true
-    return p.categoryId === parseInt(selectedCategory)
-  })
-
-  const visibleProducts = filteredProducts.filter(
+  const filteredProducts = productsList.filter(
     (p) => !hiddenProducts.has(p.id)
   )
 
+  const goToPage = (page: number) => {
+    const pageNum = Math.max(1, Math.min(page, totalPages))
+    setCurrentPage(pageNum)
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
   const currentProduct = productsList.find((p) => p.id === selectedProduct)
 
-  if (isLoading) {
+  if (isLoading && currentPage === 1) {
     return (
       <SidebarProvider
         style={
@@ -287,8 +313,9 @@ export default function ProduitsPage() {
           <AppSidebar menu={menusByRole.admin} />
           <SidebarInset className="flex-1 flex flex-col overflow-hidden">
             <SiteHeader />
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center gap-2">
               <Loader2 className="h-8 w-8 animate-spin" />
+              <span>Chargement des produits...</span>
             </div>
           </SidebarInset>
         </div>
@@ -373,7 +400,10 @@ export default function ProduitsPage() {
             <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
               <Button
                 variant={selectedCategory === "all" ? "default" : "outline"}
-                onClick={() => setSelectedCategory("all")}
+                onClick={() => {
+                  setSelectedCategory("all")
+                  setCurrentPage(1)
+                }}
                 className="whitespace-nowrap"
               >
                 Tous les produits
@@ -382,7 +412,10 @@ export default function ProduitsPage() {
                 <Button
                   key={cat.id}
                   variant={selectedCategory === cat.id.toString() ? "default" : "outline"}
-                  onClick={() => setSelectedCategory(cat.id.toString())}
+                  onClick={() => {
+                    setSelectedCategory(cat.id.toString())
+                    setCurrentPage(1)
+                  }}
                   className="whitespace-nowrap"
                 >
                   {cat.name}
@@ -390,293 +423,344 @@ export default function ProduitsPage() {
               ))}
             </div>
 
-            {visibleProducts.length === 0 ? (
+            {filteredProducts.length === 0 ? (
               <div className="flex items-center justify-center py-12">
                 <p className="text-muted-foreground">Aucun produit disponible</p>
               </div>
             ) : (
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {visibleProducts.map((product) => (
-                  <div key={product.id}>
-                    <Dialog
-                      open={selectedProduct === product.id}
-                      onOpenChange={(open) => {
-                        setSelectedProduct(open ? product.id : null)
-                        if (!open) {
-                          setIsEditing(false)
-                          setEditImagePreview(null)
-                        }
-                      }}
-                    >
-                      <DialogTrigger asChild>
-                        <Card className="overflow-hidden cursor-pointer hover:shadow-lg transition">
-                          {product.image ? (
-                            <img
-                              src={product.image}
-                              alt={product.name}
-                              className="h-48 w-full object-cover"
-                              onError={(e) => {
-                                console.error(`❌ Erreur chargement image: ${product.name}`)
-                                const target = e.target as HTMLImageElement
-                                target.style.display = "none"
-                                const errorDiv = document.createElement('div')
-                                errorDiv.className = "h-48 w-full bg-gray-200 flex items-center justify-center"
-                                errorDiv.innerHTML = '<span class="text-gray-400">Erreur image</span>'
-                                target.parentNode?.appendChild(errorDiv)
-                              }}
-                              onLoad={() => console.log(`✅ Image chargée: ${product.name}`)}
-                            />
-                          ) : (
-                            <div className="h-48 w-full bg-gray-200 flex items-center justify-center">
-                              <span className="text-gray-400">Pas d'image</span>
-                            </div>
-                          )}
-                          <CardContent className="p-4 space-y-2">
-                            <h2 className="font-semibold text-lg">
-                              {product.name}
-                            </h2>
-                            <p className="text-sm text-muted-foreground line-clamp-2">
-                              {product.description || "Pas de description"}
-                            </p>
+              <div className="space-y-6">
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredProducts.map((product) => (
+                    <div key={product.id}>
+                      <Dialog
+                        open={selectedProduct === product.id}
+                        onOpenChange={(open) => {
+                          setSelectedProduct(open ? product.id : null)
+                          if (!open) {
+                            setIsEditing(false)
+                            setEditImagePreview(null)
+                          }
+                        }}
+                      >
+                        <DialogTrigger asChild>
+                          <Card className="overflow-hidden cursor-pointer hover:shadow-lg transition">
+                            {product.image ? (
+                              <img
+                                src={product.image}
+                                alt={product.name}
+                                className="h-48 w-full object-cover"
+                              />
+                            ) : (
+                              <div className="h-48 w-full bg-gray-200 flex items-center justify-center">
+                                <span className="text-gray-400">Pas d'image</span>
+                              </div>
+                            )}
+                            <CardContent className="p-4 space-y-2">
+                              <h2 className="font-semibold text-lg">
+                                {product.name}
+                              </h2>
+                              <p className="text-sm text-muted-foreground line-clamp-2">
+                                {product.description || "Pas de description"}
+                              </p>
 
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold">
-                                {product.price} {product.currency}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                Stock: {product.stock}
-                              </span>
-                            </div>
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold">
+                                  {product.price} {product.currency}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  Stock: {product.stock}
+                                </span>
+                              </div>
 
-                            <Button variant="outline" className="w-full" size="sm">
-                              Voir détails
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      </DialogTrigger>
+                              <Button variant="outline" className="w-full" size="sm">
+                                Voir détails
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        </DialogTrigger>
 
-                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>
-                            {isEditing ? "Modifier le produit" : currentProduct?.name}
-                          </DialogTitle>
-                        </DialogHeader>
+                        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle>
+                              {isEditing ? "Modifier le produit" : currentProduct?.name}
+                            </DialogTitle>
+                          </DialogHeader>
 
-                        {!isEditing ? (
-                          <div className="grid md:grid-cols-2 gap-4">
-                            <div>
-                              {currentProduct?.image ? (
-                                <img
-                                  src={currentProduct.image}
-                                  alt={currentProduct.name}
-                                  className="object-cover rounded w-full"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement
-                                    target.style.display = "none"
-                                    const errorDiv = document.createElement('div')
-                                    errorDiv.className = "h-64 w-full bg-gray-200 flex items-center justify-center rounded"
-                                    errorDiv.innerHTML = '<span class="text-gray-400">Erreur image</span>'
-                                    target.parentNode?.appendChild(errorDiv)
-                                  }}
-                                />
-                              ) : (
-                                <div className="h-64 w-full bg-gray-200 flex items-center justify-center rounded">
-                                  <span className="text-gray-400">Pas d'image</span>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex flex-col justify-between">
+                          {!isEditing ? (
+                            <div className="grid md:grid-cols-2 gap-4">
                               <div>
-                                <p className="text-sm text-muted-foreground mb-2">
-                                  <span className="font-semibold">Catégorie:</span>{" "}
-                                  {currentProduct?.category.name}
-                                </p>
-                                <p className="text-sm text-muted-foreground mb-4">
-                                  {currentProduct?.description || "Pas de description"}
-                                </p>
-                                <div className="flex justify-between items-center mb-4">
-                                  <span className="font-bold text-2xl">
-                                    {currentProduct?.price} {currentProduct?.currency}
-                                  </span>
-                                  <span className="text-sm text-muted-foreground">
-                                    Stock: {currentProduct?.stock}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="space-y-2">
-                                <Button className="w-full" size="sm">
-                                  Ajouter au panier
-                                </Button>
-
-                                <div className="grid grid-cols-3 gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleEdit(currentProduct?.id || 0)
-                                    }}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleToggleVisibility(currentProduct?.id || 0)
-                                      setSelectedProduct(null)
-                                    }}
-                                  >
-                                    <EyeOff className="h-4 w-4" />
-                                  </Button>
-
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleDelete(currentProduct?.id || 0)
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-
-                                <DialogClose asChild>
-                                  <Button variant="ghost" className="w-full" size="sm">
-                                    Fermer
-                                  </Button>
-                                </DialogClose>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-4 py-2">
-                            <div className="space-y-2">
-                              <Label htmlFor="edit-name">Nom du produit</Label>
-                              <Input
-                                id="edit-name"
-                                name="name"
-                                value={editForm.name}
-                                onChange={handleEditFormChange}
-                                placeholder="Nom du produit"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="edit-category">Catégorie</Label>
-                              <Select
-                                value={editForm.categoryId.toString()}
-                                onValueChange={(value) =>
-                                  setEditForm({ ...editForm, categoryId: Number(value) })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Sélectionner une catégorie" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {categories.map((cat) => (
-                                    <SelectItem key={cat.id} value={cat.id.toString()}>
-                                      {cat.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="edit-description">Description</Label>
-                              <Textarea
-                                id="edit-description"
-                                name="description"
-                                value={editForm.description}
-                                onChange={handleEditFormChange}
-                                placeholder="Description du produit"
-                                rows={3}
-                              />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="edit-price">Prix</Label>
-                                <Input
-                                  id="edit-price"
-                                  name="price"
-                                  type="number"
-                                  step="0.01"
-                                  value={editForm.price}
-                                  onChange={handleEditFormChange}
-                                  placeholder="Prix"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="edit-stock">Stock</Label>
-                                <Input
-                                  id="edit-stock"
-                                  name="stock"
-                                  type="number"
-                                  value={editForm.stock}
-                                  onChange={handleEditFormChange}
-                                  placeholder="Stock"
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="edit-image">Photo du produit</Label>
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  id="edit-image"
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={handleEditImageChange}
-                                  className="flex-1"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => document.getElementById("edit-image")?.click()}
-                                >
-                                  <Upload className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              {editImagePreview && (
-                                <div className="mt-2 border rounded-lg overflow-hidden">
+                                {currentProduct?.image ? (
                                   <img
-                                    src={editImagePreview}
-                                    alt="Preview"
-                                    className="w-full h-48 object-cover"
+                                    src={currentProduct.image}
+                                    alt={currentProduct.name}
+                                    className="object-cover rounded w-full"
+                                  />
+                                ) : (
+                                  <div className="h-64 w-full bg-gray-200 flex items-center justify-center rounded">
+                                    <span className="text-gray-400">Pas d'image</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col justify-between">
+                                <div>
+                                  <p className="text-sm text-muted-foreground mb-2">
+                                    <span className="font-semibold">Catégorie:</span>{" "}
+                                    {currentProduct?.category.name}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground mb-4">
+                                    {currentProduct?.description || "Pas de description"}
+                                  </p>
+                                  <div className="flex justify-between items-center mb-4">
+                                    <span className="font-bold text-2xl">
+                                      {currentProduct?.price} {currentProduct?.currency}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">
+                                      Stock: {currentProduct?.stock}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleEdit(currentProduct?.id || 0)
+                                      }}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleToggleVisibility(currentProduct?.id || 0)
+                                        setSelectedProduct(null)
+                                      }}
+                                    >
+                                      <EyeOff className="h-4 w-4" />
+                                    </Button>
+
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleDelete(currentProduct?.id || 0)
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+
+                                  <DialogClose asChild>
+                                    <Button variant="ghost" className="w-full" size="sm">
+                                      Fermer
+                                    </Button>
+                                  </DialogClose>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-4 py-2">
+                              <div className="space-y-2">
+                                <Label htmlFor="edit-name">Nom du produit</Label>
+                                <Input
+                                  id="edit-name"
+                                  name="name"
+                                  value={editForm.name}
+                                  onChange={handleEditFormChange}
+                                  placeholder="Nom du produit"
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="edit-category">Catégorie</Label>
+                                <Select
+                                  value={editForm.categoryId.toString()}
+                                  onValueChange={(value) =>
+                                    setEditForm({ ...editForm, categoryId: Number(value) })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Sélectionner une catégorie" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {categories.map((cat) => (
+                                      <SelectItem key={cat.id} value={cat.id.toString()}>
+                                        {cat.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="edit-description">Description</Label>
+                                <Textarea
+                                  id="edit-description"
+                                  name="description"
+                                  value={editForm.description}
+                                  onChange={handleEditFormChange}
+                                  placeholder="Description du produit"
+                                  rows={3}
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="edit-price">Prix</Label>
+                                  <Input
+                                    id="edit-price"
+                                    name="price"
+                                    type="number"
+                                    step="0.01"
+                                    value={editForm.price}
+                                    onChange={handleEditFormChange}
+                                    placeholder="Prix"
                                   />
                                 </div>
-                              )}
-                            </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="edit-stock">Stock</Label>
+                                  <Input
+                                    id="edit-stock"
+                                    name="stock"
+                                    type="number"
+                                    value={editForm.stock}
+                                    onChange={handleEditFormChange}
+                                    placeholder="Stock"
+                                  />
+                                </div>
+                              </div>
 
-                            <div className="flex gap-3 pt-4">
-                              <Button
-                                onClick={handleSaveEdit}
-                                className="flex-1"
-                              >
-                                Enregistrer
-                              </Button>
-                              <Button
-                                onClick={handleCancelEdit}
-                                variant="outline"
-                                className="flex-1"
-                              >
-                                Annuler
-                              </Button>
+                              <div className="space-y-2">
+                                <Label htmlFor="edit-image">Photo du produit</Label>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    id="edit-image"
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleEditImageChange}
+                                    className="flex-1"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => document.getElementById("edit-image")?.click()}
+                                  >
+                                    <Upload className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                {editImagePreview && (
+                                  <div className="mt-2 border rounded-lg overflow-hidden">
+                                    <img
+                                      src={editImagePreview}
+                                      alt="Preview"
+                                      className="w-full h-48 object-cover"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex gap-3 pt-4">
+                                <Button
+                                  onClick={handleSaveEdit}
+                                  className="flex-1"
+                                >
+                                  Enregistrer
+                                </Button>
+                                <Button
+                                  onClick={handleCancelEdit}
+                                  variant="outline"
+                                  className="flex-1"
+                                >
+                                  Annuler
+                                </Button>
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </DialogContent>
-                    </Dialog>
+                          )}
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ✅ OPTIMIZED: Better pagination with API loading */}
+                {totalPages > 1 && (
+                  <div className="mt-8 border-t pt-6">
+                    <div className="flex flex-col gap-4">
+                      {/* Info line */}
+                      <div className="text-sm text-muted-foreground text-center">
+                        Affichage page {currentPage} sur {totalPages}
+                        {isLoadingMore && <Loader2 className="h-4 w-4 inline animate-spin ml-2" />}
+                      </div>
+
+                      {/* Pagination controls */}
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1 || isLoadingMore}
+                          className="gap-1"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                          <span className="hidden sm:inline">Précédent</span>
+                        </Button>
+
+                        {/* Smart page numbers */}
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                            const showPage =
+                              page <= 2 ||
+                              page >= totalPages - 1 ||
+                              (page >= currentPage - 1 && page <= currentPage + 1)
+
+                            return (
+                              <div key={page}>
+                                {showPage ? (
+                                  <Button
+                                    variant={currentPage === page ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => goToPage(page)}
+                                    disabled={isLoadingMore}
+                                    className="w-10"
+                                  >
+                                    {page}
+                                  </Button>
+                                ) : page === 3 ? (
+                                  <span className="px-2 text-muted-foreground">...</span>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages || isLoadingMore}
+                          className="gap-1"
+                        >
+                          <span className="hidden sm:inline">Suivant</span>
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {/* Metrics */}
+                      <div className="text-sm text-muted-foreground text-center">
+                        Total: {totalProducts} produits • {totalPages} pages
+                      </div>
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Search, ShoppingCart, X, Plus, Minus, FileText, Info, Filter } from "lucide-react"
+import { Search, ShoppingCart, X, Plus, Minus, FileText, Info, Filter, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import Image from "next/image"
 import {
   Sheet,
@@ -28,34 +28,26 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+const ITEMS_PER_PAGE = 12
+
 export default function ProduitsPage() {
   const router = useRouter()
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [search, setSearch] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
-  const [loading, setLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [cart, setCart] = useState<any[]>([])
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
-  // Load products
-  useEffect(() => {
-    async function loadProducts() {
-      try {
-        const response = await fetch('/api/products')
-        const data = await response.json()
-        setProducts(data || [])
-      } catch (error) {
-        console.error('Erreur de chargement des produits:', error)
-        setProducts([])
-      }
-      setLoading(false)
-    }
-    loadProducts()
-  }, [])
+  // ✅ Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalProducts, setTotalProducts] = useState(0)
 
-  // Load categories
+  // Load categories (once)
   useEffect(() => {
     async function loadCategories() {
       try {
@@ -70,19 +62,59 @@ export default function ProduitsPage() {
     loadCategories()
   }, [])
 
+  // ✅ OPTIMIZED: Load products with pagination
+  const loadProducts = async (page: number = 1) => {
+    try {
+      const isFirstPage = page === 1
+      isFirstPage ? setIsLoading(true) : setIsLoadingMore(true)
+
+      // Build query params
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: ITEMS_PER_PAGE.toString(),
+      })
+
+      if (selectedCategory !== "all") {
+        params.append("categoryId", selectedCategory)
+      }
+
+      const response = await fetch(`/api/products?${params}`)
+      const result = await response.json()
+
+      if (result.data) {
+        setProducts(result.data || [])
+        setCurrentPage(result.pagination.page)
+        setTotalPages(result.pagination.totalPages)
+        setTotalProducts(result.pagination.total)
+      }
+    } catch (error) {
+      console.error('Erreur de chargement des produits:', error)
+      setProducts([])
+    } finally {
+      setIsLoading(false)
+      setIsLoadingMore(false)
+    }
+  }
+
+  // Load products on mount
+  useEffect(() => {
+    loadProducts(1)
+  }, [])
+
+  // Reload products when category changes
+  useEffect(() => {
+    loadProducts(1)
+  }, [selectedCategory])
+
   // Initialize cart from React state (no localStorage)
   useEffect(() => {
     setCart([])
   }, [])
 
+  // ✅ Search is done client-side (no API call needed)
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+    return p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.description?.toLowerCase().includes(search.toLowerCase())
-    
-    const matchesCategory = selectedCategory === "all" || 
-      p.category?.id === parseInt(selectedCategory)
-    
-    return matchesSearch && matchesCategory
   })
 
   const handleAddToCart = (product: any) => {
@@ -123,10 +155,16 @@ export default function ProduitsPage() {
   }
 
   const handleCreateQuote = () => {
-    // Sauvegarder le panier dans localStorage même s'il est vide
     localStorage.setItem("cart", JSON.stringify(cart))
-    // Rediriger vers la page de création de devis
     router.push('/responsable/devis/create')
+  }
+
+  // ✅ Page navigation
+  const goToPage = (page: number) => {
+    const pageNum = Math.max(1, Math.min(page, totalPages))
+    loadProducts(pageNum)
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
@@ -145,12 +183,12 @@ export default function ProduitsPage() {
         <SidebarInset className="flex-1 flex flex-col overflow-hidden">
           <SiteHeader />
 
-          <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 lg:px-10">
-            <div className="flex flex-col gap-6">
+          <div className="flex-1 overflow-y-auto px-6 py-4 lg:px-8">
+            <div className="flex flex-col gap-4">
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <h1 className="text-2xl font-bold">Produits</h1>
-                
+                <h1 className="text-3xl font-bold">Produits</h1>
+
                 <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
                   <div className="relative w-full sm:w-72">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -185,7 +223,7 @@ export default function ProduitsPage() {
                     <Button variant="outline" size="icon" className="relative">
                       <ShoppingCart className="h-5 w-5" />
                       {cartItemsCount > 0 && (
-                        <Badge 
+                        <Badge
                           className="absolute -top-2 -right-2 h-6 w-6 flex items-center justify-center p-0 bg-primary"
                         >
                           {cartItemsCount}
@@ -264,7 +302,7 @@ export default function ProduitsPage() {
               )}
 
               {/* Product Grid */}
-              {loading ? (
+              {isLoading ? (
                 <div className="flex items-center justify-center h-40">
                   <p className="text-muted-foreground">Chargement des produits...</p>
                 </div>
@@ -273,74 +311,152 @@ export default function ProduitsPage() {
                   <p className="text-muted-foreground">Aucun produit trouvé</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {filteredProducts.map((product) => {
-                    const hasValidImage = product.image && typeof product.image === 'string' && product.image.startsWith('data:')
-                    
-                    return (
-                    <Card key={product.id} className="overflow-hidden flex flex-col card-interactive group">
-                      {hasValidImage ? (
-                        <div className="relative h-40 w-full bg-muted">
-                          <Image
-                            src={product.image}
-                            alt={product.name}
-                            fill
-                            className="object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className="h-40 w-full bg-muted flex items-center justify-center">
-                          <p className="text-muted-foreground">Pas d'image</p>
-                        </div>
-                      )}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {filteredProducts.map((product) => {
+                      const hasValidImage = product.image && typeof product.image === 'string' && product.image.startsWith('data:')
 
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-base">{product.name}</CardTitle>
-                        <Badge variant="outline" className="w-fit">
-                          {product.category?.name || "Catégorie"}
-                        </Badge>
-                      </CardHeader>
+                      return (
+                        <Card key={product.id} className="overflow-hidden flex flex-col card-interactive group">
+                          {hasValidImage ? (
+                            <div className="relative h-40 w-full bg-muted">
+                              <Image
+                                src={product.image}
+                                alt={product.name}
+                                fill
+                                className="object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="h-40 w-full bg-muted flex items-center justify-center">
+                              <p className="text-muted-foreground">Pas d'image</p>
+                            </div>
+                          )}
 
-                      <CardContent className="flex-1 flex flex-col gap-3">
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {product.description || "Aucune description"}
-                        </p>
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-base">{product.name}</CardTitle>
+                            <Badge variant="outline" className="w-fit">
+                              {product.category?.name || "Catégorie"}
+                            </Badge>
+                          </CardHeader>
 
-                        <div className="flex items-baseline justify-between">
-                          <span className="text-2xl font-bold text-primary">
-                            {product.price.toFixed(2)}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {product.currency}
-                          </span>
+                          <CardContent className="flex-1 flex flex-col gap-3">
+                            <p className="text-sm text-muted-foreground line-clamp-2">
+                              {product.description || "Aucune description"}
+                            </p>
+
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-2xl font-bold text-primary">
+                                {product.price.toFixed(2)}
+                              </span>
+                              <span className="text-sm text-muted-foreground">
+                                {product.currency}
+                              </span>
+                            </div>
+
+                            <div className="text-sm text-muted-foreground">
+                              Stock: <span className={product.stock > 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
+                                {product.stock}
+                              </span>
+                            </div>
+
+                            <div className="flex gap-2 mt-auto">
+                              <Button
+                                className="flex-1"
+                                onClick={() => handleAddToCart(product)}
+                                disabled={product.stock === 0}
+                              >
+                                <ShoppingCart className="h-4 w-4 mr-2" />
+                                Ajouter
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handleViewDetails(product)}
+                              >
+                                <Info className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        Page {currentPage} sur {totalPages}
+                        {isLoadingMore && <Loader2 className="h-4 w-4 inline animate-spin ml-2" />}
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1 || isLoadingMore}
+                          className="gap-2"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                          <span className="hidden sm:inline">Précédent</span>
+                        </Button>
+
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                            const showPage =
+                              page <= 2 ||
+                              page >= totalPages - 1 ||
+                              (page >= currentPage - 1 && page <= currentPage + 1)
+
+                            if (showPage) {
+                              return (
+                                <Button
+                                  key={page}
+                                  variant={currentPage === page ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => goToPage(page)}
+                                  disabled={isLoadingMore}
+                                  className="w-10"
+                                >
+                                  {page}
+                                </Button>
+                              )
+                            }
+
+                            if (page === 3) {
+                              return (
+                                <span
+                                  key="dots-start"
+                                  className="px-2 text-muted-foreground"
+                                >
+                                  ...
+                                </span>
+                              )
+                            }
+
+                            return null
+                          })}
                         </div>
 
-                        <div className="text-sm text-muted-foreground">
-                          Stock: <span className={product.stock > 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
-                            {product.stock}
-                          </span>
-                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages || isLoadingMore}
+                          className="gap-2"
+                        >
+                          <span className="hidden sm:inline">Suivant</span>
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
 
-                        <div className="flex gap-2 mt-auto">
-                          <Button
-                            className="flex-1"
-                            onClick={() => handleAddToCart(product)}
-                            disabled={product.stock === 0}
-                          >
-                            <ShoppingCart className="h-4 w-4 mr-2" />
-                            Ajouter
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => handleViewDetails(product)}
-                          >
-                            <Info className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )})}
+                      <div className="text-sm text-muted-foreground">
+                        {ITEMS_PER_PAGE} lignes/page
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
