@@ -22,11 +22,15 @@ enum DevisStatus {
 }
 
 enum AdminDevisStatus {
-  EN_ATTENTE
+  EN_ATTENTE_DE_LIVRAISON
+  EN_COURS_DE_LIVRAISON
+  LIVREE
   REJETE
-  APPROUVE
 }
-
+enum StockStatus {
+  DISPONIBLE
+  HORS_STOCK
+}
 model User {
   id    String   @id @default(uuid())
   email String   @unique
@@ -69,7 +73,7 @@ model Product {
   description String?  @db.Text
   price       Decimal  @db.Decimal(10, 2)
   currency    String   @default("TND")
-  stock       Int      @default(0)
+  stock       StockStatus @default(DISPONIBLE)
   image       Bytes?
   imageType   String?  @db.VarChar(50)
   isActive    Boolean  @default(true)
@@ -112,7 +116,7 @@ model Devis {
   
   // Statuts séparés pour Responsable et Admin
   responsableStatus DevisStatus @default(EN_ATTENTE)
-  adminStatus       AdminDevisStatus @default(EN_ATTENTE)
+  adminStatus       AdminDevisStatus @default(EN_ATTENTE_DE_LIVRAISON)
 
   // Client information
   clientName      String      @db.VarChar(255)
@@ -121,6 +125,12 @@ model Devis {
   clientAddr      String?     @db.Text
   clientEnterprise String?     @db.VarChar(255)
   clientNotes     String?     @db.Text
+
+  // ✅ PDF fields for invoice/facture download
+  invoicePdf      Bytes?      @db.LongBlob
+  invoicePdfName  String?     @db.VarChar(255)
+  invoicePdfType  String?     @db.VarChar(50)
+  invoicePdfUploadedAt DateTime?
 
   // Relations
   createdById     String

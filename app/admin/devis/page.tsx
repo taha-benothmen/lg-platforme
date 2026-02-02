@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Select,
@@ -33,7 +34,24 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Loader2, Download, Search, Filter, AlertCircle, CheckCircle2, X, Eye, Check, XCircle, ChevronLeft, ChevronRight } from "lucide-react"
+import {
+  Loader2,
+  Download,
+  Search,
+  Filter,
+  AlertCircle,
+  CheckCircle2,
+  X,
+  Eye,
+  Check,
+  XCircle,
+  ChevronLeft,
+  ChevronRight,
+  Upload,
+  FileText,
+  Truck,
+  Package
+} from "lucide-react"
 
 type DevisItem = {
   id: string
@@ -45,7 +63,10 @@ type DevisItem = {
   clientNotes?: string
   total: string
   responsableStatus: "EN_ATTENTE" | "APPROUVE" | "SUSPENDU" | "REJETE"
-  adminStatus: "EN_ATTENTE" | "REJETE" | "APPROUVE"
+  adminStatus: "EN_ATTENTE_DE_LIVRAISON" | "EN_COURS_DE_LIVRAISON" | "LIVREE" | "REJETE"
+  hasInvoicePdf: boolean
+  invoicePdfName?: string
+  invoicePdfUploadedAt?: string
   createdAt: string
   updatedAt: string
   createdBy?: {
@@ -73,6 +94,7 @@ type DevisItem = {
       name: string
     }
   }>
+  invoicePdfData?: string
 }
 
 type AlertMessage = {
@@ -87,7 +109,6 @@ type Etablissement = {
   parentId?: string | null
 }
 
-// Utilitaires de statut
 const statusLabels: Record<string, string> = {
   EN_ATTENTE: "En attente",
   APPROUVE: "Approuvé",
@@ -109,6 +130,20 @@ const STATUS_CLASSES: Record<string, string> = {
   REJETE: "bg-red-100 text-red-900",
 }
 
+const adminStatusLabels: Record<string, string> = {
+  EN_ATTENTE_DE_LIVRAISON: "En attente de livraison",
+  EN_COURS_DE_LIVRAISON: "En cours de livraison",
+  LIVREE: "Livrée",
+  REJETE: "Rejeté",
+}
+
+const adminStatusClasses: Record<string, string> = {
+  EN_ATTENTE_DE_LIVRAISON: "bg-blue-100 text-blue-900",
+  EN_COURS_DE_LIVRAISON: "bg-purple-100 text-purple-900",
+  LIVREE: "bg-green-100 text-green-900",
+  REJETE: "bg-red-100 text-red-900",
+}
+
 function getStatusLabel(status: string): string {
   return statusLabels[status] || status
 }
@@ -126,7 +161,7 @@ Téléphone: ${quote.clientPhone || "N/A"}
 Date: ${new Date(quote.createdAt).toLocaleDateString("fr-FR")}
 Total: ${parseFloat(quote.total).toFixed(2)} TND
 État Responsable: ${getStatusLabel(quote.responsableStatus)}
-État Admin: ${getStatusLabel(quote.adminStatus)}
+État Admin: ${adminStatusLabels[quote.adminStatus] || quote.adminStatus}
 
 Créé par: ${quote.createdBy?.firstName} ${quote.createdBy?.lastName}
 Établissement: ${quote.etablissement?.name || "N/A"}
@@ -141,7 +176,6 @@ Créé par: ${quote.createdBy?.firstName} ${quote.createdBy?.lastName}
   URL.revokeObjectURL(url)
 }
 
-// ✅ NEW: Pagination constant
 const ITEMS_PER_PAGE = 20
 
 export default function AdminDevisPage() {
@@ -160,18 +194,16 @@ export default function AdminDevisPage() {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [isClient, setIsClient] = useState(false)
-  
-  // ✅ NEW: Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalDevis, setTotalDevis] = useState(0)
+  const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null)
 
-  // ✅ FIX 1: Initialize client-side only and extract userId from localStorage
   useEffect(() => {
     setIsClient(true)
-    
+
     let id = localStorage.getItem("userId")
-    
+
     if (!id) {
       const userSessionStr = localStorage.getItem("userSession")
       if (userSessionStr) {
@@ -183,8 +215,7 @@ export default function AdminDevisPage() {
         }
       }
     }
-    
-    console.log("userId initialized from localStorage:", id)
+
     setUserId(id)
   }, [])
 
@@ -195,7 +226,6 @@ export default function AdminDevisPage() {
     }, 5000)
   }
 
-  // Load establishments
   useEffect(() => {
     const loadEtablissements = async () => {
       try {
@@ -215,17 +245,15 @@ export default function AdminDevisPage() {
     loadEtablissements()
   }, [])
 
-  // ✅ NEW: Load devis with pagination
   useEffect(() => {
     if (userId) {
-      setCurrentPage(1) // Reset to first page when filters change
+      setCurrentPage(1)
       loadAllDevis(1)
     }
   }, [userId, responsableStatusFilter, adminStatusFilter, etablissementFilter])
 
   const loadAllDevis = async (page: number = 1) => {
     if (!userId) {
-      console.warn("userId not available, skipping loadAllDevis")
       setLoading(false)
       return
     }
@@ -233,7 +261,7 @@ export default function AdminDevisPage() {
     try {
       const isFirstPage = page === 1
       isFirstPage ? setLoading(true) : setIsLoadingMore(true)
-      
+
       const url = new URL("/api/devis", window.location.origin)
       url.searchParams.set("userId", userId)
       url.searchParams.set("page", page.toString())
@@ -251,7 +279,6 @@ export default function AdminDevisPage() {
         url.searchParams.set("etablissementId", etablissementFilter)
       }
 
-      console.log(`📊 Loading page ${page}...`)
       const response = await fetch(url.toString())
 
       if (!response.ok) {
@@ -260,7 +287,6 @@ export default function AdminDevisPage() {
       }
 
       const result = await response.json()
-      console.log(`✅ Loaded page ${page}:`, result)
 
       if (result.data && Array.isArray(result.data)) {
         setDevis(result.data)
@@ -273,7 +299,6 @@ export default function AdminDevisPage() {
         setTotalPages(1)
       }
     } catch (error) {
-      console.error("Erreur:", error)
       showAlert(
         "error",
         "Erreur",
@@ -296,6 +321,7 @@ export default function AdminDevisPage() {
       const url = new URL("/api/devis", window.location.origin)
       url.searchParams.set("userId", userId)
       url.searchParams.set("id", devisId)
+      url.searchParams.set("includePdf", "true")
 
       const response = await fetch(url.toString())
       if (!response.ok) {
@@ -306,63 +332,108 @@ export default function AdminDevisPage() {
       setSelectedDevis(result.data)
       setIsDetailOpen(true)
     } catch (error) {
-      console.error("Erreur:", error)
       showAlert("error", "Erreur", "Impossible de charger les détails du devis")
     }
   }
 
+  const downloadInvoicePdf = () => {
+    if (!selectedDevis?.invoicePdfData || !selectedDevis.invoicePdfName) return
+    const link = document.createElement("a")
+    link.href = selectedDevis.invoicePdfData
+    link.download = selectedDevis.invoicePdfName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const handleUpdateStatus = async (statusType: "responsable" | "admin", newStatus: string) => {
-    if (!selectedDevis || !userId) return
+    if (!selectedDevis || !userId) {
+      console.error("❌ Missing required data:", { 
+        selectedDevisExists: !!selectedDevis, 
+        userIdExists: !!userId 
+      })
+      showAlert("error", "Erreur", "Données manquantes pour la mise à jour")
+      return
+    }
 
     try {
       setIsUpdatingStatus(true)
+      console.log("🔄 Updating devis status", {
+        devisId: selectedDevis.id.slice(0, 8),
+        statusType,
+        newStatus,
+      })
 
-      const updatePayload: any = {
-        devisId: selectedDevis.id,
-        userId: userId,
-      }
-
+      const formData = new FormData()
+      formData.append("devisId", selectedDevis.id)
+      formData.append("userId", userId)
+      
       if (statusType === "responsable") {
-        updatePayload.responsableStatus = newStatus
-      } else {
-        updatePayload.adminStatus = newStatus
+        formData.append("responsableStatus", newStatus)
+      } else if (statusType === "admin") {
+        formData.append("adminStatus", newStatus)
       }
+
+      if (selectedPdfFile) {
+        console.log("📎 Adding PDF file:", {
+          name: selectedPdfFile.name,
+          size: `${(selectedPdfFile.size / 1024).toFixed(2)} KB`,
+          type: selectedPdfFile.type,
+        })
+        formData.append("invoicePdf", selectedPdfFile)
+      }
+
+      console.log("📤 Sending FormData...")
 
       const response = await fetch("/api/devis", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatePayload),
+        body: formData,
       })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la mise à jour")
-      }
+      console.log("📥 Response status:", response.status)
 
       const result = await response.json()
-      setSelectedDevis(result.data)
+      console.log("📋 Response data:", result)
 
-      // Reload current page
+      if (!response.ok) {
+        const errorMessage = result?.error || `Erreur HTTP ${response.status}`
+        console.error("❌ API error:", errorMessage)
+        throw new Error(errorMessage)
+      }
+
+      if (!result?.data) {
+        throw new Error("Données de réponse invalides")
+      }
+
+      console.log("✅ Update successful")
+      setSelectedDevis(result.data)
+      setSelectedPdfFile(null)
       await loadAllDevis(currentPage)
-      showAlert("success", "Succès", `Statut mis à jour`)
+
+      const statusLabel = 
+        statusType === "admin" 
+          ? adminStatusLabels[newStatus] 
+          : statusLabels[newStatus]
+      
+      showAlert("success", "Succès", `Statut mis à jour: ${statusLabel}`)
+
     } catch (error) {
-      showAlert("error", "Erreur", error instanceof Error ? error.message : "Impossible de mettre à jour le devis")
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error("❌ Error:", errorMessage)
+      showAlert("error", "Erreur", errorMessage || "Impossible de mettre à jour le devis")
     } finally {
       setIsUpdatingStatus(false)
     }
   }
 
-  // ✅ NEW: Handle page changes
   const goToPage = (page: number) => {
     const pageNum = Math.max(1, Math.min(page, totalPages))
     loadAllDevis(pageNum)
   }
 
-  // Group establishments by parent
   const parentEtabs = etablissements.filter(e => !e.parentId)
   const getChildEtabs = (parentId: string) => etablissements.filter(e => e.parentId === parentId)
 
-  // ✅ FIX 4: Don't render until client is ready
   if (!isClient) {
     return null
   }
@@ -382,26 +453,24 @@ export default function AdminDevisPage() {
 
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 lg:px-8 space-y-6">
             {alertMessage && (
-              <div className="mb-4 animate-in fade-in slide-in-from-top-2">
-                <Alert
-                  variant={alertMessage.type === "success" ? "default" : "destructive"}
-                  className={alertMessage.type === "success" ? "bg-green-50 border-green-200" : ""}
+              <Alert
+                variant={alertMessage.type === "success" ? "default" : "destructive"}
+                className={alertMessage.type === "success" ? "bg-green-50 border-green-200" : ""}
+              >
+                {alertMessage.type === "success" ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                ) : (
+                  <AlertCircle className="h-4 w-4" />
+                )}
+                <AlertTitle>{alertMessage.title}</AlertTitle>
+                <AlertDescription>{alertMessage.message}</AlertDescription>
+                <button
+                  onClick={() => setAlertMessage(null)}
+                  className="absolute top-4 right-4"
                 >
-                  {alertMessage.type === "success" ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4" />
-                  )}
-                  <AlertTitle>{alertMessage.title}</AlertTitle>
-                  <AlertDescription>{alertMessage.message}</AlertDescription>
-                  <button
-                    onClick={() => setAlertMessage(null)}
-                    className="absolute top-4 right-4"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </Alert>
-              </div>
+                  <X className="h-4 w-4" />
+                </button>
+              </Alert>
             )}
 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -431,9 +500,10 @@ export default function AdminDevisPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">Tous les statuts</SelectItem>
-                    <SelectItem value="EN_ATTENTE">En attente</SelectItem>
+                    <SelectItem value="EN_ATTENTE_DE_LIVRAISON">En attente livraison</SelectItem>
+                    <SelectItem value="EN_COURS_DE_LIVRAISON">En cours livraison</SelectItem>
+                    <SelectItem value="LIVREE">Livrée</SelectItem>
                     <SelectItem value="REJETE">Rejeté</SelectItem>
-                    <SelectItem value="APPROUVE">Approuvé</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -493,6 +563,7 @@ export default function AdminDevisPage() {
                           <TableHead>Établissement</TableHead>
                           <TableHead>Responsable</TableHead>
                           <TableHead>Admin</TableHead>
+                          <TableHead>Facture</TableHead>
                           <TableHead className="text-center">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -524,14 +595,21 @@ export default function AdminDevisPage() {
                             </TableCell>
                             <TableCell>
                               {q.responsableStatus === "APPROUVE" ? (
-                                <Badge
-                                  variant={getStatusVariant(q.adminStatus)}
-                                  className={STATUS_CLASSES[q.adminStatus]}
-                                >
-                                  {getStatusLabel(q.adminStatus)}
+                                <Badge className={adminStatusClasses[q.adminStatus]}>
+                                  {adminStatusLabels[q.adminStatus]}
                                 </Badge>
                               ) : (
                                 <span className="text-sm text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {q.hasInvoicePdf ? (
+                                <div className="flex items-center justify-center gap-1">
+                                  <FileText className="h-4 w-4 text-green-600" />
+                                  <span className="text-xs text-green-600">PDF</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-300 text-xs">-</span>
                               )}
                             </TableCell>
                             <TableCell className="text-center">
@@ -563,7 +641,6 @@ export default function AdminDevisPage() {
                   </div>
                 </div>
 
-                {/* ✅ NEW: Pagination Controls */}
                 {totalPages > 1 && (
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t">
                     <div className="text-sm text-muted-foreground">
@@ -583,7 +660,6 @@ export default function AdminDevisPage() {
                         <span className="hidden sm:inline">Précédent</span>
                       </Button>
 
-                      {/* ✅ Page numbers */}
                       <div className="flex items-center gap-1">
                         {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
                           const showPage =
@@ -634,19 +710,17 @@ export default function AdminDevisPage() {
         </SidebarInset>
       </div>
 
-      {/* Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Détails du Devis #{selectedDevis?.id.slice(0, 8)}</DialogTitle>
             <DialogDescription>
-              {selectedDevis && `Responsable: ${getStatusLabel(selectedDevis.responsableStatus)} | Admin: ${selectedDevis.responsableStatus === "APPROUVE" ? getStatusLabel(selectedDevis.adminStatus) : "-"}`}
+              {selectedDevis && `Responsable: ${getStatusLabel(selectedDevis.responsableStatus)} | Admin: ${selectedDevis.responsableStatus === "APPROUVE" ? adminStatusLabels[selectedDevis.adminStatus] : "-"}`}
             </DialogDescription>
           </DialogHeader>
 
           {selectedDevis && (
             <div className="space-y-6">
-              {/* Client Information */}
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Informations Client</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -679,7 +753,6 @@ export default function AdminDevisPage() {
                 </div>
               </div>
 
-              {/* Items */}
               {selectedDevis.items && selectedDevis.items.length > 0 && (
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg">Articles</h3>
@@ -710,7 +783,6 @@ export default function AdminDevisPage() {
                 </div>
               )}
 
-              {/* Summary */}
               <div className="space-y-4 border-t pt-4">
                 <h3 className="font-semibold text-lg">Résumé</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -720,26 +792,20 @@ export default function AdminDevisPage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">État Responsable</p>
-                    <Badge
-                      variant={getStatusVariant(selectedDevis.responsableStatus)}
-                      className={STATUS_CLASSES[selectedDevis.responsableStatus]}
-                    >
+                    <Badge className={STATUS_CLASSES[selectedDevis.responsableStatus]}>
                       {getStatusLabel(selectedDevis.responsableStatus)}
                     </Badge>
                   </div>
-                  
+
                   {selectedDevis.responsableStatus === "APPROUVE" && (
                     <div>
                       <p className="text-sm text-muted-foreground">État Admin</p>
-                      <Badge
-                        variant={getStatusVariant(selectedDevis.adminStatus)}
-                        className={STATUS_CLASSES[selectedDevis.adminStatus]}
-                      >
-                        {getStatusLabel(selectedDevis.adminStatus)}
+                      <Badge className={adminStatusClasses[selectedDevis.adminStatus]}>
+                        {adminStatusLabels[selectedDevis.adminStatus]}
                       </Badge>
                     </div>
                   )}
-                  
+
                   <div>
                     <p className="text-sm text-muted-foreground">Créé par</p>
                     <p className="font-medium">
@@ -772,51 +838,129 @@ export default function AdminDevisPage() {
                   )}
                 </div>
               </div>
+
+              <div className="space-y-3 border-t pt-4">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Facture PDF
+                </h3>
+
+                {selectedDevis.hasInvoicePdf ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-green-600">
+                      <FileText className="h-5 w-5" />
+                      <span className="font-medium">{selectedDevis.invoicePdfName}</span>
+                    </div>
+                    <p className="text-sm text-gray-500">
+                      Uploadé le: {new Date(selectedDevis.invoicePdfUploadedAt!).toLocaleString("fr-FR")}
+                    </p>
+                    <Button onClick={downloadInvoicePdf} variant="outline" size="sm" className="gap-2">
+                      <Download className="h-4 w-4" />
+                      Télécharger la facture
+                    </Button>
+                  </div>
+                ) : selectedDevis.responsableStatus === "APPROUVE" ? (
+                  <div className="space-y-3">
+                    <Input
+                      type="file"
+                      accept=".pdf"
+                      onChange={(e) => setSelectedPdfFile(e.target.files?.[0] || null)}
+                    />
+                    {selectedPdfFile && (
+                      <div className="flex items-center gap-2 p-2 bg-green-50 rounded">
+                        <FileText className="h-4 w-4 text-green-600" />
+                        <span className="text-sm flex-1">{selectedPdfFile.name}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedPdfFile(null)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
           )}
 
-          <DialogFooter className="flex gap-2 flex-wrap">
-            {selectedDevis?.responsableStatus === "APPROUVE" && selectedDevis?.adminStatus === "EN_ATTENTE" && (
-              <>
-                <Button
-                  onClick={() => handleUpdateStatus("admin", "APPROUVE")}
-                  disabled={isUpdatingStatus}
-                  className="gap-2 bg-green-600 hover:bg-green-700"
-                >
-                  <Check className="h-4 w-4" />
-                  Valider 
-                </Button>
-                <Button
-                  onClick={() => handleUpdateStatus("admin", "REJETE")}
-                  disabled={isUpdatingStatus}
-                  variant="destructive"
-                  className="gap-2"
-                >
-                  <XCircle className="h-4 w-4" />
-                  Rejeter 
-                </Button>
-              </>
-            )}
+          <DialogFooter className="flex-col gap-3">
+            {selectedDevis?.responsableStatus === "APPROUVE" &&
+              selectedDevis?.adminStatus === "EN_ATTENTE_DE_LIVRAISON" && (
+                <div className="w-full space-y-3">
+                  <div className="flex gap-2 w-full">
+                    <Button
+                      onClick={() => handleUpdateStatus("admin", "EN_COURS_DE_LIVRAISON")}
+                      disabled={isUpdatingStatus}
+                      className="gap-2 bg-blue-600 hover:bg-blue-700 flex-1"
+                    >
+                      {isUpdatingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
+                      Confirmer et envoyer
+                    </Button>
+                    <Button
+                      onClick={() => handleUpdateStatus("admin", "REJETE")}
+                      disabled={isUpdatingStatus}
+                      variant="destructive"
+                      className="gap-2"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Rejeter
+                    </Button>
+                  </div>
+                </div>
+              )}
 
-            {selectedDevis?.responsableStatus !== "APPROUVE" && selectedDevis?.responsableStatus !== "REJETE" && (
-              <div className="w-full text-sm text-muted-foreground italic">
+            {selectedDevis?.responsableStatus === "APPROUVE" &&
+              selectedDevis?.adminStatus === "EN_COURS_DE_LIVRAISON" && (
+                <div className="flex gap-2 w-full">
+                  <Button
+                    onClick={() => handleUpdateStatus("admin", "LIVREE")}
+                    disabled={isUpdatingStatus}
+                    className="gap-2 bg-green-600 hover:bg-green-700 flex-1"
+                  >
+                    {isUpdatingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
+                    Marquer comme livrée
+                  </Button>
+                  <Button
+                    onClick={() => handleUpdateStatus("admin", "REJETE")}
+                    disabled={isUpdatingStatus}
+                    variant="destructive"
+                    className="gap-2"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Rejeter
+                  </Button>
+                </div>
+              )}
+
+            {selectedDevis?.responsableStatus === "APPROUVE" &&
+              selectedDevis?.adminStatus === "LIVREE" && (
+                <div className="w-full p-4 bg-green-50 text-green-800 rounded-lg border border-green-200 flex items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-medium">Devis terminé - Livraison effectuée</span>
+                </div>
+              )}
+
+            {selectedDevis?.responsableStatus === "APPROUVE" &&
+              selectedDevis?.adminStatus === "REJETE" && (
+                <div className="w-full p-4 bg-red-50 text-red-800 rounded-lg border border-red-200 flex items-center gap-3">
+                  <XCircle className="h-5 w-5" />
+                  <span className="font-medium">Devis rejeté par l'admin</span>
+                </div>
+              )}
+
+            {selectedDevis?.responsableStatus !== "APPROUVE" && (
+              <div className="w-full p-4 bg-gray-50 text-gray-600 rounded-lg border border-gray-200 text-sm italic">
                 En attente de l'approbation du Responsable...
               </div>
             )}
-            {selectedDevis?.responsableStatus === "REJETE" && (
-              <div className="w-full text-sm text-muted-foreground italic">
-                Le responsable a rejeté le devis...
-              </div>
-            )}
-            {selectedDevis?.responsableStatus === "APPROUVE" && selectedDevis?.adminStatus !== "EN_ATTENTE" && (
-              <div className="w-full text-sm text-muted-foreground italic">
-                Devis déjà traité par l'Admin
-              </div>
-            )}
 
-            <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
-              Fermer
-            </Button>
+            <div className="flex justify-end w-full pt-2">
+              <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
+                Fermer
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

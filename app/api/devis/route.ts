@@ -71,8 +71,8 @@ async function getAllChildEstablishmentIds(parentId: string): Promise<string[]> 
 }
 
 // Format devis response
-function formatDevisResponse(devis: any, includeItems: boolean = false) {
-  return {
+function formatDevisResponse(devis: any, includeItems: boolean = false, includePdf: boolean = false) {
+  const response: any = {
     id: devis.id,
     clientName: devis.clientName,
     clientEmail: devis.clientEmail,
@@ -83,6 +83,9 @@ function formatDevisResponse(devis: any, includeItems: boolean = false) {
     total: devis.total.toString(),
     responsableStatus: devis.responsableStatus,
     adminStatus: devis.adminStatus,
+    hasInvoicePdf: !!devis.invoicePdf,
+    invoicePdfName: devis.invoicePdfName,
+    invoicePdfUploadedAt: devis.invoicePdfUploadedAt,
     itemsCount: devis.items?.length || 0,
     createdBy: devis.createdBy
       ? {
@@ -114,11 +117,24 @@ function formatDevisResponse(devis: any, includeItems: boolean = false) {
       : null,
     createdAt: devis.createdAt,
     updatedAt: devis.updatedAt,
-    ...(includeItems && { items: devis.items }),
   }
+
+  if (includeItems && devis.items) {
+    response.items = devis.items
+  }
+
+  // Include PDF as base64 if requested
+  if (includePdf && devis.invoicePdf && devis.invoicePdfType) {
+    const base64String = Buffer.isBuffer(devis.invoicePdf)
+      ? devis.invoicePdf.toString('base64')
+      : devis.invoicePdf
+    response.invoicePdfData = `data:${devis.invoicePdfType};base64,${base64String}`
+  }
+
+  return response
 }
 
-// ✅ OPTIMIZED: GET with pagination
+// GET with pagination and PDF download
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -127,8 +143,9 @@ export async function GET(request: NextRequest) {
     const devisId = searchParams.get("id")
     const userId = searchParams.get("userId")
     const etablissementFilter = searchParams.get("etablissementId")
+    const includePdf = searchParams.get("includePdf") === "true"
+    const downloadPdf = searchParams.get("download") === "true"
     
-    // ✅ NEW: Pagination parameters
     const page = parseInt(searchParams.get("page") || "1")
     const limit = parseInt(searchParams.get("limit") || "20")
 
@@ -139,7 +156,6 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Validate user
     const userValidation = await validateUserAccess(userId)
     if (!userValidation.valid) {
       return NextResponse.json(
@@ -149,7 +165,79 @@ export async function GET(request: NextRequest) {
 
     const { user, isAdmin } = userValidation as any
 
-    // Determine establishment filter
+    // 📥 Handle PDF Download
+    if (downloadPdf && devisId) {
+      console.log("📥 Downloading PDF for devis:", devisId)
+
+      const devis = await prisma.devis.findUnique({
+        where: { id: devisId },
+        select: {
+          id: true,
+          invoicePdf: true,
+          invoicePdfName: true,
+          invoicePdfType: true,
+          createdById: true,
+        }
+      })
+
+      if (!devis) {
+        console.warn(`❌ Devis not found: ${devisId}`)
+        return NextResponse.json(
+          { error: "Devis non trouvé", success: false },
+          { status: 404 }
+        )
+      }
+
+      if (!isAdmin && devis.createdById !== userId) {
+        console.warn(`❌ Unauthorized PDF access for devis ${devisId}`)
+        return NextResponse.json(
+          { error: "Non autorisé", success: false },
+          { status: 403 }
+        )
+      }
+
+      if (!devis.invoicePdf || !devis.invoicePdfName || !devis.invoicePdfType) {
+        console.warn(`❌ PDF not available for devis ${devisId}`)
+        return NextResponse.json(
+          { error: "Facture PDF non disponible", success: false },
+          { status: 404 }
+        )
+      }
+
+      console.log("✅ PDF found:", devis.invoicePdfName)
+
+      let pdfBuffer: Buffer
+
+      if (Buffer.isBuffer(devis.invoicePdf)) {
+        pdfBuffer = devis.invoicePdf
+      } else if (typeof devis.invoicePdf === 'string') {
+        const pdfStr: string = devis.invoicePdf as string
+        if (pdfStr.startsWith("data:")) {
+          const base64Data = pdfStr.split(",")[1]
+          pdfBuffer = Buffer.from(base64Data, "base64")
+        } else {
+          pdfBuffer = Buffer.from(pdfStr, "base64")
+        }
+      } else {
+        throw new Error("Invalid PDF data format")
+      }
+
+      console.log("📦 PDF size:", pdfBuffer.length, "bytes")
+
+      return new NextResponse(pdfBuffer.toString('base64'), {
+        status: 200,
+        headers: {
+          "Content-Type": devis.invoicePdfType || "application/pdf",
+          "Content-Disposition": `attachment; filename="${devis.invoicePdfName}"`,
+          "Content-Length": pdfBuffer.length.toString(),
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        }
+      })
+    }
+
+    // Regular GET handlers (list and details)
     let etablissementIds: string[] = []
 
     if (isAdmin) {
@@ -176,7 +264,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get specific devis if ID provided
     if (devisId) {
       const devis = await prisma.devis.findUnique({
         where: { id: devisId },
@@ -195,37 +282,10 @@ export async function GET(request: NextRequest) {
               },
             },
           },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          validatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          adminValidatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          etablissement: {
-            select: {
-              id: true,
-              name: true,
-              address: true,
-              phone: true,
-              email: true,
-            },
-          },
+          createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+          validatedBy: { select: { id: true, firstName: true, lastName: true } },
+          adminValidatedBy: { select: { id: true, firstName: true, lastName: true } },
+          etablissement: { select: { id: true, name: true, address: true, phone: true, email: true } },
         },
       })
 
@@ -246,19 +306,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          data: formatDevisResponse(devis, true),
+          data: formatDevisResponse(devis, true, includePdf),
         },
         { status: 200 }
       )
     }
 
-    // Get all devis with filters and pagination
     const whereClause: any = {}
 
     if (!isAdmin && etablissementIds.length > 0) {
-      whereClause.etablissementId = {
-        in: etablissementIds,
-      }
+      whereClause.etablissementId = { in: etablissementIds }
     }
 
     if (responsableStatus && responsableStatus !== "ALL") {
@@ -273,60 +330,19 @@ export async function GET(request: NextRequest) {
       whereClause.etablissementId = etablissementFilter
     }
 
-    // ✅ NEW: Calculate pagination
     const skip = (page - 1) * limit
-    
-    // ✅ NEW: Get total count
-    const total = await prisma.devis.count({
-      where: whereClause,
-    })
+    const total = await prisma.devis.count({ where: whereClause })
 
     const devis = await prisma.devis.findMany({
       where: whereClause,
       include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                price: true,
-              },
-            },
-          },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        validatedBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        adminValidatedBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        etablissement: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        items: { include: { product: { select: { id: true, name: true, price: true } } } },
+        createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        validatedBy: { select: { id: true, firstName: true, lastName: true } },
+        adminValidatedBy: { select: { id: true, firstName: true, lastName: true } },
+        etablissement: { select: { id: true, name: true } },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
       skip,
       take: limit,
     })
@@ -337,22 +353,14 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         data: devis.map((d) => formatDevisResponse(d)),
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       },
       { status: 200 }
     )
   } catch (error) {
     console.error("Error retrieving devis:", error)
     return NextResponse.json(
-      {
-        error: "Server error while retrieving devis",
-        success: false,
-      },
+      { error: "Server error while retrieving devis", success: false },
       { status: 500 }
     )
   }
@@ -372,10 +380,7 @@ export async function POST(request: NextRequest) {
 
     if (!body.client || !body.products || body.products.length === 0) {
       return NextResponse.json(
-        {
-          error: "Invalid data - client and products are required",
-          success: false,
-        },
+        { error: "Invalid data - client and products are required", success: false },
         { status: 400 }
       )
     }
@@ -406,14 +411,10 @@ export async function POST(request: NextRequest) {
     }
 
     const clientErrors = []
-    if (!body.client.nom?.trim())
-      clientErrors.push("Client last name is required")
-    if (!body.client.prenom?.trim())
-      clientErrors.push("Client first name is required")
-    if (!body.client.email?.trim())
-      clientErrors.push("Client email is required")
-    if (!body.client.telephone?.trim())
-      clientErrors.push("Client phone is required")
+    if (!body.client.nom?.trim()) clientErrors.push("Client last name is required")
+    if (!body.client.prenom?.trim()) clientErrors.push("Client first name is required")
+    if (!body.client.email?.trim()) clientErrors.push("Client email is required")
+    if (!body.client.telephone?.trim()) clientErrors.push("Client phone is required")
 
     if (clientErrors.length > 0) {
       return NextResponse.json(
@@ -432,10 +433,7 @@ export async function POST(request: NextRequest) {
       const foundIds = dbProducts.map((p) => p.id)
       const missingIds = productIds.filter((id) => !foundIds.includes(id))
       return NextResponse.json(
-        {
-          error: `Products not found: ${missingIds.join(", ")}`,
-          success: false,
-        },
+        { error: `Products not found: ${missingIds.join(", ")}`, success: false },
         { status: 400 }
       )
     }
@@ -443,10 +441,8 @@ export async function POST(request: NextRequest) {
     const stockErrors = []
     for (const product of body.products) {
       const dbProduct = dbProducts.find((p) => p.id === product.id)
-      if (dbProduct && dbProduct.stock < product.quantity) {
-        stockErrors.push(
-          `Insufficient stock for ${dbProduct.name} (available: ${dbProduct.stock}, requested: ${product.quantity})`
-        )
+      if (dbProduct && dbProduct.stock === "HORS_STOCK" ) {
+        stockErrors.push(`Produit ${dbProduct.name} est hors stock`)
       }
     }
 
@@ -467,7 +463,7 @@ export async function POST(request: NextRequest) {
         clientNotes: body.client.notes?.trim() || null,
         total: totalAmount,
         responsableStatus: "EN_ATTENTE",
-        adminStatus: "EN_ATTENTE",
+        adminStatus: "EN_ATTENTE_DE_LIVRAISON",
         createdById: body.userId,
         etablissementId: user.etablissementId,
         items: {
@@ -482,19 +478,9 @@ export async function POST(request: NextRequest) {
         },
       },
       include: {
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, price: true },
-            },
-          },
-        },
-        createdBy: {
-          select: { id: true, firstName: true, lastName: true, email: true },
-        },
-        etablissement: {
-          select: { id: true, name: true },
-        },
+        items: { include: { product: { select: { id: true, name: true, price: true } } } },
+        createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        etablissement: { select: { id: true, name: true } },
       },
     })
 
@@ -509,26 +495,80 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error creating devis:", error)
     return NextResponse.json(
-      {
-        error: "Server error while creating devis",
-        success: false,
-      },
+      { error: "Server error while creating devis", success: false },
       { status: 500 }
     )
   }
 }
 
-// PUT - Update devis status
+// PUT - Update devis status with PDF upload support
 export async function PUT(request: NextRequest) {
+  let body: any = null
+  
   try {
-    const body = await request.json()
-    const { devisId, userId, responsableStatus, adminStatus } = body
+    const contentType = request.headers.get("content-type") || ""
+    let isFormData = false
 
-    if (!devisId || !userId || (!responsableStatus && !adminStatus)) {
+    // Handle FormData for PDF uploads
+    if (contentType.includes("multipart/form-data")) {
+      try {
+        isFormData = true
+        const formData = await request.formData()
+        
+        const devisId = formData.get("devisId")
+        const userId = formData.get("userId")
+        const responsableStatus = formData.get("responsableStatus")
+        const adminStatus = formData.get("adminStatus")
+        const invoicePdf = formData.get("invoicePdf")
+
+        if (!devisId || !userId) {
+          return NextResponse.json(
+            { error: "devisId and userId are required in FormData", success: false },
+            { status: 400 }
+          )
+        }
+
+        body = {
+          devisId: devisId as string,
+          userId: userId as string,
+          responsableStatus: responsableStatus as string | null,
+          adminStatus: adminStatus as string | null,
+          invoicePdf: invoicePdf as File | null,
+        }
+
+        console.log("📤 FormData parsed:", {
+          devisId: body.devisId,
+          userId: body.userId,
+          hasResponsableStatus: !!body.responsableStatus,
+          hasAdminStatus: !!body.adminStatus,
+          hasPdf: !!body.invoicePdf,
+          pdfName: body.invoicePdf?.name,
+        })
+      } catch (parseError) {
+        console.error("❌ Error parsing FormData:", parseError)
+        return NextResponse.json(
+          { error: "Invalid FormData format", success: false },
+          { status: 400 }
+        )
+      }
+    } else {
+      body = await request.json()
+    }
+
+    const { devisId, userId, responsableStatus, adminStatus, invoicePdf } = body
+
+    if (!devisId || !userId) {
       return NextResponse.json(
-        {
-          error: "devisId, userId, and either responsableStatus or adminStatus are required",
-          success: false,
+        { error: "devisId and userId are required", success: false },
+        { status: 400 }
+      )
+    }
+
+    if (!responsableStatus && !adminStatus && !invoicePdf) {
+      return NextResponse.json(
+        { 
+          error: "At least one field to update is required (responsableStatus, adminStatus, or invoicePdf)", 
+          success: false 
         },
         { status: 400 }
       )
@@ -544,24 +584,19 @@ export async function PUT(request: NextRequest) {
 
     const { isAdmin } = userValidation as any
 
-    const validResponsableStatuses = [
-      "EN_ATTENTE",
-      "APPROUVE",
-      "SUSPENDU",
-      "REJETE",
-    ]
-
+    const validResponsableStatuses = ["EN_ATTENTE", "APPROUVE", "SUSPENDU", "REJETE"]
     const validAdminStatuses = [
-      "EN_ATTENTE",
+      "EN_ATTENTE_DE_LIVRAISON",
+      "EN_COURS_DE_LIVRAISON",
+      "LIVREE",
       "REJETE",
-      "APPROUVE",
     ]
 
     if (responsableStatus && !validResponsableStatuses.includes(responsableStatus)) {
       return NextResponse.json(
-        {
-          error: `Invalid responsable status. Valid statuses: ${validResponsableStatuses.join(", ")}`,
-          success: false,
+        { 
+          error: `Invalid responsable status. Valid: ${validResponsableStatuses.join(", ")}`,
+          success: false 
         },
         { status: 400 }
       )
@@ -569,9 +604,9 @@ export async function PUT(request: NextRequest) {
 
     if (adminStatus && !validAdminStatuses.includes(adminStatus)) {
       return NextResponse.json(
-        {
-          error: `Invalid admin status. Valid statuses: ${validAdminStatuses.join(", ")}`,
-          success: false,
+        { 
+          error: `Invalid admin status. Valid: ${validAdminStatuses.join(", ")}`,
+          success: false 
         },
         { status: 400 }
       )
@@ -579,10 +614,16 @@ export async function PUT(request: NextRequest) {
 
     const devis = await prisma.devis.findUnique({
       where: { id: devisId },
-      select: { createdById: true, responsableStatus: true, adminStatus: true, etablissementId: true },
+      select: { 
+        createdById: true, 
+        responsableStatus: true, 
+        adminStatus: true, 
+        etablissementId: true 
+      },
     })
 
     if (!devis) {
+      console.warn(`❌ Devis not found: ${devisId}`)
       return NextResponse.json(
         { error: "Devis not found", success: false },
         { status: 404 }
@@ -597,23 +638,23 @@ export async function PUT(request: NextRequest) {
     }
 
     const validResponsableTransitions: Record<string, string[]> = {
-      EN_ATTENTE: ["APPROUVE", "SUSPENDU", "REJETE"], 
+      EN_ATTENTE: ["APPROUVE", "SUSPENDU", "REJETE"],
       APPROUVE: ["SUSPENDU", "REJETE"],
       SUSPENDU: ["APPROUVE", "REJETE"],
       REJETE: [],
     }
 
     const validAdminTransitions: Record<string, string[]> = {
-      EN_ATTENTE: ["APPROUVE", "REJETE"],
-      VALIDE: ["APPROUVE", "REJETE"],
+      EN_ATTENTE_DE_LIVRAISON: ["EN_COURS_DE_LIVRAISON", "REJETE"],
+      EN_COURS_DE_LIVRAISON: ["LIVREE", "REJETE"],
+      LIVREE: [],
       REJETE: [],
-      APPROUVE: [],
     }
 
     if (responsableStatus && !validResponsableTransitions[devis.responsableStatus]?.includes(responsableStatus)) {
       return NextResponse.json(
         {
-          error: `Invalid responsable status transition: ${devis.responsableStatus} → ${responsableStatus}`,
+          error: `Invalid responsable transition: ${devis.responsableStatus} → ${responsableStatus}`,
           success: false,
         },
         { status: 400 }
@@ -623,7 +664,7 @@ export async function PUT(request: NextRequest) {
     if (adminStatus && !validAdminTransitions[devis.adminStatus]?.includes(adminStatus)) {
       return NextResponse.json(
         {
-          error: `Invalid admin status transition: ${devis.adminStatus} → ${adminStatus}`,
+          error: `Invalid admin transition: ${devis.adminStatus} → ${adminStatus}`,
           success: false,
         },
         { status: 400 }
@@ -643,35 +684,59 @@ export async function PUT(request: NextRequest) {
 
     if (adminStatus) {
       updateData.adminStatus = adminStatus
-      if (adminStatus === "APPROUVE") {
+      if (adminStatus === "LIVREE" || adminStatus === "REJETE") {
         updateData.adminValidatedById = userId
       }
     }
+
+    // Process PDF file if provided
+    if (invoicePdf && invoicePdf instanceof File && invoicePdf.size > 0) {
+      try {
+        const arrayBuffer = await invoicePdf.arrayBuffer()
+        updateData.invoicePdf = Buffer.from(arrayBuffer)
+        updateData.invoicePdfName = invoicePdf.name
+        updateData.invoicePdfType = invoicePdf.type
+        updateData.invoicePdfUploadedAt = new Date()
+        
+        console.log("✅ PDF processed:", {
+          name: invoicePdf.name,
+          size: invoicePdf.size,
+          type: invoicePdf.type,
+        })
+      } catch (uploadError) {
+        console.error("❌ Error processing PDF:", uploadError)
+        return NextResponse.json(
+          { error: "Failed to process PDF file", success: false },
+          { status: 400 }
+        )
+      }
+    }
+
+    console.log("🔄 Updating devis:", {
+      devisId,
+      statusChanges: {
+        responsableStatus: responsableStatus || "unchanged",
+        adminStatus: adminStatus || "unchanged",
+      },
+      hasPdfUpdate: !!updateData.invoicePdf,
+    })
 
     const updatedDevis = await prisma.devis.update({
       where: { id: devisId },
       data: updateData,
       include: {
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, price: true },
-            },
-          },
-        },
-        createdBy: {
-          select: { id: true, firstName: true, lastName: true, email: true },
-        },
-        validatedBy: {
-          select: { id: true, firstName: true, lastName: true },
-        },
-        adminValidatedBy: {
-          select: { id: true, firstName: true, lastName: true },
-        },
-        etablissement: {
-          select: { id: true, name: true },
-        },
+        items: { include: { product: { select: { id: true, name: true, price: true } } } },
+        createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        validatedBy: { select: { id: true, firstName: true, lastName: true } },
+        adminValidatedBy: { select: { id: true, firstName: true, lastName: true } },
+        etablissement: { select: { id: true, name: true } },
       },
+    })
+
+    console.log("✅ Devis updated successfully:", {
+      devisId: updatedDevis.id,
+      newResponsableStatus: updatedDevis.responsableStatus,
+      newAdminStatus: updatedDevis.adminStatus,
     })
 
     return NextResponse.json(
@@ -683,9 +748,19 @@ export async function PUT(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
-    console.error("Error updating devis:", error)
+    console.error("❌ Error updating devis:", {
+      devisId: body?.devisId,
+      userId: body?.userId,
+      requestedChanges: {
+        responsableStatus: body?.responsableStatus,
+        adminStatus: body?.adminStatus,
+        hasPdf: !!body?.invoicePdf,
+      },
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
+
     return NextResponse.json(
-      {
+      { 
         error: "Server error while updating devis",
         success: false,
       },
@@ -739,32 +814,21 @@ export async function DELETE(request: NextRequest) {
 
     if (devis.responsableStatus !== "EN_ATTENTE") {
       return NextResponse.json(
-        {
-          error: "Only draft devis can be deleted",
-          success: false,
-        },
+        { error: "Only draft devis can be deleted", success: false },
         { status: 400 }
       )
     }
 
-    await prisma.devis.delete({
-      where: { id: devisId },
-    })
+    await prisma.devis.delete({ where: { id: devisId } })
 
     return NextResponse.json(
-      {
-        success: true,
-        message: "Devis deleted successfully",
-      },
+      { success: true, message: "Devis deleted successfully" },
       { status: 200 }
     )
   } catch (error) {
     console.error("Error deleting devis:", error)
     return NextResponse.json(
-      {
-        error: "Server error while deleting devis",
-        success: false,
-      },
+      { error: "Server error while deleting devis", success: false },
       { status: 500 }
     )
   }

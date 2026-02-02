@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE `users` (
+CREATE TABLE `lg_dbusers` (
     `id` VARCHAR(191) NOT NULL,
     `email` VARCHAR(191) NOT NULL,
     `password` VARCHAR(191) NOT NULL,
@@ -10,8 +10,9 @@ CREATE TABLE `users` (
     `isActive` BOOLEAN NOT NULL DEFAULT true,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `etablissementId` VARCHAR(191) NULL,
 
-    UNIQUE INDEX `users_email_key`(`email`),
+    UNIQUE INDEX `lg_dbusers_email_key`(`email`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -35,13 +36,13 @@ CREATE TABLE `products` (
     `price` DECIMAL(10, 2) NOT NULL,
     `currency` VARCHAR(191) NOT NULL DEFAULT 'TND',
     `stock` INTEGER NOT NULL DEFAULT 0,
-    `image` VARCHAR(500) NULL,
+    `image` LONGBLOB NULL,
+    `imageType` VARCHAR(50) NULL,
     `isActive` BOOLEAN NOT NULL DEFAULT true,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
     `categoryId` INTEGER NOT NULL,
 
-    INDEX `products_categoryId_idx`(`categoryId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -52,12 +53,11 @@ CREATE TABLE `etablissements` (
     `address` TEXT NULL,
     `phone` VARCHAR(20) NULL,
     `email` VARCHAR(255) NULL,
-    `userId` VARCHAR(191) NOT NULL,
+    `isActive` BOOLEAN NOT NULL DEFAULT true,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `parentId` VARCHAR(191) NULL,
 
-    UNIQUE INDEX `etablissements_userId_key`(`userId`),
-    INDEX `etablissements_userId_idx`(`userId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -65,18 +65,21 @@ CREATE TABLE `etablissements` (
 CREATE TABLE `devis` (
     `id` VARCHAR(191) NOT NULL,
     `total` DECIMAL(10, 2) NOT NULL,
-    `status` ENUM('EN_ATTENTE', 'ENVOYE', 'APPROUVE', 'SUSPENDU', 'REJETE', 'ACCEPTE') NOT NULL DEFAULT 'EN_ATTENTE',
+    `responsableStatus` ENUM('EN_ATTENTE', 'APPROUVE', 'SUSPENDU', 'REJETE') NOT NULL DEFAULT 'EN_ATTENTE',
+    `adminStatus` ENUM('EN_ATTENTE', 'REJETE', 'APPROUVE') NOT NULL DEFAULT 'EN_ATTENTE',
     `clientName` VARCHAR(255) NOT NULL,
     `clientEmail` VARCHAR(255) NOT NULL,
     `clientPhone` VARCHAR(20) NULL,
     `clientAddr` TEXT NULL,
+    `clientEnterprise` VARCHAR(255) NULL,
+    `clientNotes` TEXT NULL,
     `createdById` VARCHAR(191) NOT NULL,
     `validatedById` VARCHAR(191) NULL,
+    `adminValidatedById` VARCHAR(191) NULL,
+    `etablissementId` VARCHAR(191) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
-    INDEX `devis_createdById_idx`(`createdById`),
-    INDEX `devis_validatedById_idx`(`validatedById`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -87,23 +90,35 @@ CREATE TABLE `devis_items` (
     `productId` INTEGER NOT NULL,
     `quantity` INTEGER NOT NULL,
     `price` DECIMAL(10, 2) NOT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
 
-    INDEX `devis_items_devisId_idx`(`devisId`),
-    INDEX `devis_items_productId_idx`(`productId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- AddForeignKey
+ALTER TABLE `lg_dbusers` ADD CONSTRAINT `lg_dbusers_etablissementId_fkey` FOREIGN KEY (`etablissementId`) REFERENCES `etablissements`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `products` ADD CONSTRAINT `products_categoryId_fkey` FOREIGN KEY (`categoryId`) REFERENCES `categories`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `etablissements` ADD CONSTRAINT `etablissements_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `etablissements` ADD CONSTRAINT `etablissements_parentId_fkey` FOREIGN KEY (`parentId`) REFERENCES `etablissements`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `devis` ADD CONSTRAINT `devis_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `devis` ADD CONSTRAINT `devis_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `lg_dbusers`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `devis` ADD CONSTRAINT `devis_validatedById_fkey` FOREIGN KEY (`validatedById`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `devis` ADD CONSTRAINT `devis_validatedById_fkey` FOREIGN KEY (`validatedById`) REFERENCES `lg_dbusers`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `devis` ADD CONSTRAINT `devis_adminValidatedById_fkey` FOREIGN KEY (`adminValidatedById`) REFERENCES `lg_dbusers`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `devis` ADD CONSTRAINT `devis_etablissementId_fkey` FOREIGN KEY (`etablissementId`) REFERENCES `etablissements`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `devis_items` ADD CONSTRAINT `devis_items_devisId_fkey` FOREIGN KEY (`devisId`) REFERENCES `devis`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `devis_items` ADD CONSTRAINT `devis_items_productId_fkey` FOREIGN KEY (`productId`) REFERENCES `products`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;

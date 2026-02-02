@@ -41,7 +41,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-// ✅ NEW: Pagination constant
 const ITEMS_PER_PAGE = 6
 
 type DevisItem = {
@@ -60,6 +59,11 @@ type DevisItem = {
   updatedAt: string
   itemsCount: number
   etablissementId: string
+  // ✅ PDF fields
+  hasInvoicePdf?: boolean
+  invoicePdfName?: string
+  invoicePdfUploadedAt?: string
+  invoicePdfData?: string
   createdBy?: {
     id: string
     firstName: string
@@ -128,6 +132,7 @@ export default function DevisPage() {
   const [userId, setUserId] = useState<string>("")
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [alert, setAlert] = useState<AlertType>({
     show: false,
     type: "default",
@@ -135,7 +140,6 @@ export default function DevisPage() {
     description: ""
   })
   
-  // ✅ NEW: Pagination state
   const [currentPage, setCurrentPage] = useState(1)
 
   const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
@@ -172,7 +176,7 @@ export default function DevisPage() {
   // Reload when filters change
   useEffect(() => {
     if (userId) {
-      setCurrentPage(1) // Reset to page 1 when filters change
+      setCurrentPage(1)
       loadDevis()
     }
   }, [responsableStatusFilter, etablissementFilter, search])
@@ -226,20 +230,124 @@ export default function DevisPage() {
     return matchesSearch
   })
 
-  // ✅ NEW: Pagination calculations
   const totalPages = Math.ceil(filteredDevis.length / ITEMS_PER_PAGE)
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
   const endIndex = startIndex + ITEMS_PER_PAGE
   const paginatedDevis = filteredDevis.slice(startIndex, endIndex)
 
-  // ✅ NEW: Page navigation
   const goToPage = (page: number) => {
     const pageNum = Math.max(1, Math.min(page, totalPages))
     setCurrentPage(pageNum)
-    // Scroll to top of devis list
     const devisSection = document.getElementById("devis-list-section")
     if (devisSection) {
       devisSection.scrollIntoView({ behavior: "smooth" })
+    }
+  }
+
+  // ✅ Download Devis as text file
+  const handleDownloadDevis = (devisData: DevisItem) => {
+    try {
+      setDownloadingId(devisData.id)
+      console.log("📥 Downloading Devis:", devisData.id)
+
+      const content = `Devis #${devisData.id}
+
+CLIENT
+==================
+Nom: ${devisData.clientName}
+Email: ${devisData.clientEmail}
+Téléphone: ${devisData.clientPhone || "N/A"}
+Entreprise: ${devisData.clientEnterprise || "N/A"}
+Adresse: ${devisData.clientAddr || "N/A"}
+
+DÉTAILS
+==================
+Date: ${new Date(devisData.createdAt).toLocaleDateString("fr-FR")}
+Créé par: ${devisData.createdBy?.firstName} ${devisData.createdBy?.lastName}
+Établissement: ${devisData.etablissement?.name || "N/A"}
+
+PRODUITS
+==================
+${devisData.items?.map((item) => 
+  `${item.product?.name || "Produit"}\nQuantité: ${item.quantity}\nPrix unitaire: ${item.price} TND\nTotal: ${(parseFloat(item.price) * item.quantity).toFixed(2)} TND\n`
+).join("\n") || "Aucun produit"}
+
+RÉSUMÉ
+==================
+Total: ${parseFloat(devisData.total).toFixed(2)} TND
+Statut Responsable: ${STATUS_LABELS[devisData.responsableStatus]}
+Statut Admin: ${STATUS_LABELS[devisData.adminStatus] || devisData.adminStatus}
+
+${devisData.clientNotes ? `NOTES\n==================\n${devisData.clientNotes}\n` : ""}`
+
+      const blob = new Blob([content], { type: "text/plain" })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `devis-${devisData.id}.txt`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log("✅ Devis downloaded successfully")
+      showAlert("success", "Téléchargement réussi", `Le devis a été téléchargé: devis-${devisData.id}.txt`)
+    } catch (error) {
+      console.error("❌ Download error:", error)
+      showAlert("destructive", "Erreur", "Impossible de télécharger le devis")
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
+  // ✅ Download Invoice PDF from database
+  const handleDownloadInvoicePDF = async (devisData: DevisItem) => {
+    if (!devisData.hasInvoicePdf) {
+      showAlert("destructive", "Erreur", "Aucun PDF disponible pour ce devis")
+      return
+    }
+
+    try {
+      setDownloadingId(devisData.id)
+      console.log("📥 Downloading Invoice PDF:", devisData.invoicePdfName)
+
+      // Use the new download parameter
+      const url = new URL("/api/devis", window.location.origin)
+      url.searchParams.set("devisId", devisData.id)
+      url.searchParams.set("userId", userId)
+      url.searchParams.set("download", "true")
+
+      const response = await fetch(url.toString())
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Erreur lors du téléchargement")
+      }
+
+      // Get the blob from response
+      const blob = await response.blob()
+      
+      // Create a URL for the blob
+      const downloadUrl = window.URL.createObjectURL(blob)
+      
+      // Create a temporary link and click it
+      const link = document.createElement("a")
+      link.href = downloadUrl
+      link.download = devisData.invoicePdfName || "facture.pdf"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      // Clean up the URL
+      window.URL.revokeObjectURL(downloadUrl)
+
+      console.log("✅ Invoice PDF downloaded successfully")
+      showAlert("success", "Téléchargement réussi", `La facture a été téléchargée: ${devisData.invoicePdfName}`)
+    } catch (error) {
+      console.error("❌ Download error:", error)
+      showAlert("destructive", "Erreur", error instanceof Error ? error.message : "Impossible de télécharger le PDF")
+    } finally {
+      setDownloadingId(null)
     }
   }
 
@@ -349,19 +457,6 @@ export default function DevisPage() {
     }
   }
 
-  const handleDownloadPDF = async (devisData: DevisItem) => {
-    try {
-      showAlert("default", "Téléchargement", "Génération du PDF en cours...")
-      
-      setTimeout(() => {
-        showAlert("success", "Téléchargement réussi", "Le PDF a été téléchargé")
-      }, 1500)
-    } catch (error) {
-      console.error("Error downloading PDF:", error)
-      showAlert("destructive", "Erreur", "Impossible de télécharger le PDF")
-    }
-  }
-  
   const handleShareDevis = async (devisData: DevisItem) => {
     try {
       const shareText = `Devis ${devisData.id.slice(0, 8)}\nClient: ${devisData.clientName}\nTotal: ${parseFloat(devisData.total).toFixed(2)} TND`
@@ -515,6 +610,13 @@ export default function DevisPage() {
                           <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                             <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
                             <span className="truncate">Devis {d.id.slice(0, 8)}</span>
+                            {/* ✅ Show PDF indicator */}
+                            {d.hasInvoicePdf && (
+                              <Badge variant="outline" className="ml-2 bg-green-50 border-green-200 text-green-700">
+                                <FileText className="h-3 w-3 mr-1" />
+                                PDF
+                              </Badge>
+                            )}
                           </CardTitle>
                           <div className="flex gap-2">
                             <div className="flex flex-col gap-1">
@@ -551,16 +653,23 @@ export default function DevisPage() {
                               <p className="font-bold text-lg shrink-0">
                                 {parseFloat(d.total).toFixed(2)} TND
                               </p>
+                              {/* ✅ Download Devis button */}
                               <Button 
                                 size="icon" 
                                 variant="outline" 
                                 className="shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  handleDownloadPDF(d)
+                                  handleDownloadDevis(d)
                                 }}
+                                disabled={downloadingId === d.id}
+                                title="Télécharger le devis"
                               >
-                                <Download className="h-4 w-4" />
+                                {downloadingId === d.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Download className="h-4 w-4" />
+                                )}
                               </Button>
                               <Button 
                                 size="icon" 
@@ -595,7 +704,7 @@ export default function DevisPage() {
                     ))}
                   </div>
 
-                  {/* ✅ NEW: Pagination Controls */}
+                  {/* Pagination Controls */}
                   {totalPages > 1 && (
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-6 border-t">
                       <div className="text-sm text-muted-foreground">
@@ -614,7 +723,6 @@ export default function DevisPage() {
                           Précédent
                         </Button>
 
-                        {/* ✅ Smart page numbers */}
                         <div className="flex items-center gap-1">
                           {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
                             const showPage =
@@ -665,7 +773,7 @@ export default function DevisPage() {
         </SidebarInset>
       </div>
 
-      {/* ================= DETAIL DIALOG ================= */}
+      {/* DETAIL DIALOG */}
       <Dialog open={!!selectedDevis} onOpenChange={() => setSelectedDevis(null)}>
         <DialogContent className="max-w-2xl p-0 max-h-[90vh] flex flex-col gap-0">
           {selectedDevis && (
@@ -804,6 +912,42 @@ export default function DevisPage() {
                   </span>
                 </div>
 
+                {/* ✅ PDF Section */}
+                {selectedDevis.hasInvoicePdf && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2 bg-green-50 p-4 rounded-lg border border-green-200">
+                      <p className="text-sm font-semibold text-green-900 flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Facture PDF
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">{selectedDevis.invoicePdfName}</p>
+                          {selectedDevis.invoicePdfUploadedAt && (
+                            <p className="text-xs text-gray-500">
+                              {new Date(selectedDevis.invoicePdfUploadedAt).toLocaleDateString("fr-FR")}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDownloadInvoicePDF(selectedDevis)}
+                          disabled={downloadingId === selectedDevis.id}
+                        >
+                          {downloadingId === selectedDevis.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Download className="h-4 w-4 mr-2" />
+                          )}
+                          Télécharger
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 {selectedDevis.responsableStatus === "APPROUVE" && (
                   <>
                     <Separator />
@@ -855,14 +999,20 @@ export default function DevisPage() {
               {/* FOOTER FIXED */}
               <div className="px-6 py-4 border-t space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+                  {/* ✅ Download Devis button */}
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={() => handleDownloadPDF(selectedDevis)}
-                    disabled={updatingStatus || deletingId === selectedDevis.id}
+                    onClick={() => handleDownloadDevis(selectedDevis)}
+                    disabled={downloadingId === selectedDevis.id}
+                    title="Télécharger le devis en tant que fichier texte"
                   >
-                    <Download className="h-4 w-4 mr-2" />
-                    Télécharger PDF
+                    {downloadingId === selectedDevis.id ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    📥 Télécharger Devis
                   </Button>
 
                   <Button
@@ -876,6 +1026,7 @@ export default function DevisPage() {
                   </Button>
                 </div>
 
+                {/* ✅ Action buttons - Responsable can only modify if EN_ATTENTE */}
                 {selectedDevis.responsableStatus === "EN_ATTENTE" && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
                     <Button
@@ -949,33 +1100,12 @@ export default function DevisPage() {
                   </div>
                 )}
 
+                {/* ✅ If APPROUVE = No action buttons for responsable */}
                 {selectedDevis.responsableStatus === "APPROUVE" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
-                    <Button
-                      className="w-full bg-yellow-100 hover:bg-yellow-200 text-yellow-900 border-0"
-                      onClick={() =>
-                        handleUpdateStatus(selectedDevis.id, "responsable", "SUSPENDU")
-                      }
-                      disabled={updatingStatus || deletingId === selectedDevis.id}
-                    >
-                      {updatingStatus ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : null}
-                      Suspendre
-                    </Button>
-
-                    <Button
-                      className="w-full bg-red-100 hover:bg-red-200 text-red-900 border-0"
-                      onClick={() =>
-                        handleUpdateStatus(selectedDevis.id, "responsable", "REJETE")
-                      }
-                      disabled={updatingStatus || deletingId === selectedDevis.id}
-                    >
-                      {updatingStatus ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : null}
-                      Rejeter
-                    </Button>
+                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <p className="text-sm text-blue-700 font-semibold text-center">
+                      ✅ Devis approuvé - En attente de traitement par l'admin
+                    </p>
                   </div>
                 )}
 
@@ -987,11 +1117,13 @@ export default function DevisPage() {
                   </div>
                 )}
 
+                {/* ✅ Delete button - only when EN_ATTENTE */}
                 <Button
                   variant="destructive"
                   className="w-full"
                   onClick={() => handleDeleteDevis(selectedDevis.id)}
                   disabled={deletingId === selectedDevis.id || updatingStatus || selectedDevis.responsableStatus !== "EN_ATTENTE"}
+                  title={selectedDevis.responsableStatus !== "EN_ATTENTE" ? "Seuls les devis en attente peuvent être supprimés" : "Supprimer le devis"}
                 >
                   {deletingId === selectedDevis.id ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

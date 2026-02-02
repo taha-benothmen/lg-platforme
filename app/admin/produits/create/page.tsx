@@ -27,7 +27,7 @@ export default function CreateProductPage() {
     description: "",
     price: "",
     currency: "TND",
-    stock: "",
+    stock: "DISPONIBLE",
     category: "",
   })
 
@@ -126,7 +126,11 @@ export default function CreateProductPage() {
     setLoading(true)
     setError("")
     setSuccessMessage("")
-
+    console.log("FormData entries:")
+    for (const pair of Object.entries(form)) {
+      console.log(pair[0], pair[1])
+    }
+    
     try {
       // Validation
       if (!form.name || !form.price || !form.stock || !form.category) {
@@ -323,23 +327,23 @@ export default function CreateProductPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="stock" className="mb-2 block">Stock</Label>
-                  <div className="flex">
-                    <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-input bg-gray-100 text-gray-700">
-                      📦
-                    </span>
-                    <Input
-                      id="stock"
-                      name="stock"
-                      type="number"
-                      value={form.stock}
-                      onChange={handleChange}
-                      placeholder="Stock disponible"
-                      className="rounded-r-md flex-1"
-                      required
-                    />
-                  </div>
+                  <Label htmlFor="stock" className="mb-2 block">Stock 📦</Label>
+                  <Select
+                    value={form.stock}
+                    onValueChange={(value) => setForm({ ...form, stock: value })}
+                    required
+                  >
+                    <SelectTrigger className="flex">
+                      <SelectValue placeholder="Sélectionner le stock" className="flex-1 rounded-r-md" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DISPONIBLE">DISPONIBLE</SelectItem>
+                      <SelectItem value="HORS_STOCK">HORS_STOCK</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
+
               </div>
 
               {/* Image Upload */}

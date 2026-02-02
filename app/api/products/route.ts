@@ -1,5 +1,3 @@
-// app/api/products/route.ts
-
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -72,7 +70,7 @@ export async function GET(request: NextRequest) {
         description: product.description,
         price: parseFloat(product.price.toString()),
         currency: product.currency,
-        stock: product.stock,
+        stock: product.stock, // ✅ Enum: "DISPONIBLE" | "HORS_STOCK"
         image: imageDataUrl,
         imageType: product.imageType,
         isActive: product.isActive,
@@ -112,14 +110,22 @@ export async function POST(request: NextRequest) {
     const description = formData.get("description") as string
     const price = formData.get("price") as string
     const currency = (formData.get("currency") as string) || "TND"
-    const stock = formData.get("stock") as string
+    const stock = formData.get("stock") as string // ✅ Enum: "DISPONIBLE" | "HORS_STOCK"
     const categoryId = formData.get("categoryId") as string
     const imageFile = formData.get("image") as File | null
 
     // Validation
-    if (!name || !price || stock === undefined) {
+    if (!name || !price || !stock) {
       return NextResponse.json(
         { error: "Name, price, and stock are required" },
+        { status: 400 }
+      )
+    }
+
+    // ✅ Validation de l'enum stock
+    if (stock !== "DISPONIBLE" && stock !== "HORS_STOCK") {
+      return NextResponse.json(
+        { error: "Stock must be DISPONIBLE or HORS_STOCK" },
         { status: 400 }
       )
     }
@@ -165,14 +171,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Créer le produit
+    // ✅ Créer le produit avec stock comme enum (PAS de parseInt)
     const product = await prisma.product.create({
       data: {
         name,
         description: description || null,
         price: parseFloat(price),
         currency: currency || "TND",
-        stock: parseInt(stock),
+        stock: stock as "DISPONIBLE" | "HORS_STOCK", // ✅ Cast explicite de l'enum
         image: imageBuffer,
         imageType: imageType,
         categoryId: finalCategoryId,
@@ -201,7 +207,7 @@ export async function POST(request: NextRequest) {
       description: product.description,
       price: parseFloat(product.price.toString()),
       currency: product.currency,
-      stock: product.stock,
+      stock: product.stock, // ✅ Enum
       image: imageDataUrl,
       imageType: product.imageType,
       isActive: product.isActive,

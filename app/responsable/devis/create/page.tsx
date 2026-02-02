@@ -61,6 +61,13 @@ type UserInfo = {
   firstName?: string
   lastName?: string
   email?: string
+  etablissement?: {
+    id: string
+    name: string
+    address?: string
+    phone?: string
+    email?: string
+  }
 }
 
 type EtablissementInfo = {
@@ -136,20 +143,35 @@ export default function CreerDevisPage() {
 
         setUserId(currentUserId)
 
-        // Load user info
-        const userResponse = await fetch(`/api/utilisateurs/${currentUserId}`)
-        if (userResponse.ok) {
-          const userData = await userResponse.json()
-          setUserInfo(userData)
+        // ✅ FIXED: Load user info WITH establishment
+        try {
+          const userResponse = await fetch(`/api/utilisateurs/${currentUserId}`)
+          if (userResponse.ok) {
+            const userData = await userResponse.json()
+            setUserInfo(userData)
+            console.log("📊 User data loaded:", userData)
+            console.log("📊 User etablissementId:", userData.etablissementId)
 
-          // Load establishment info
-          if (userData.etablissementId) {
-            const etabResponse = await fetch(`/api/etablissements/${userData.etablissementId}`)
-            if (etabResponse.ok) {
-              const etabData = await etabResponse.json()
-              setEtablissementInfo(etabData)
+            // ✅ FIXED: L'établissement vient DIRECTEMENT de userData.etablissement
+            // Plus besoin d'appels API supplémentaires!
+            if (userData.etablissement) {
+              console.log("✅ Establishment found:", userData.etablissement)
+              console.log("   - Name:", userData.etablissement.name)
+              console.log("   - Address:", userData.etablissement.address)
+              console.log("   - Phone:", userData.etablissement.phone)
+              console.log("   - Email:", userData.etablissement.email)
+              setEtablissementInfo(userData.etablissement)
+            } else {
+              console.warn("⚠️ No establishment assigned to user")
+              console.warn("   User has etablissementId:", userData.etablissementId)
+              console.warn("   But etablissement object is null")
+              setEtablissementInfo(null)
             }
+          } else {
+            console.error("❌ User API returned non-ok status:", userResponse.status)
           }
+        } catch (error) {
+          console.error("❌ Error loading user info:", error)
         }
 
         // Load categories
@@ -324,6 +346,12 @@ export default function CreerDevisPage() {
 
       const grandTotal = calculateTotal()
 
+      // ✅ FIXED: Use already-loaded establishment info (no additional API calls)
+      const etabName = etablissementInfo?.name || "Non assigné"
+      const etabAddress = etablissementInfo?.address || ""
+      const etabPhone = etablissementInfo?.phone || ""
+      const etabEmail = etablissementInfo?.email || ""
+
       // Create HTML content for PDF
       const htmlContent = `
         <!DOCTYPE html>
@@ -439,29 +467,33 @@ export default function CreerDevisPage() {
             </div>
           </div>
 
-          ${etablissementInfo ? `
           <div class="section">
             <div class="section-title">Établissement</div>
             <table class="info-table">
               <tr>
                 <td class="label">Nom:</td>
-                <td>${etablissementInfo.name || '-'}</td>
+                <td>${etabName}</td>
               </tr>
+              ${etabAddress ? `
               <tr>
                 <td class="label">Adresse:</td>
-                <td>${etablissementInfo.address || '-'}</td>
+                <td>${etabAddress}</td>
               </tr>
+              ` : ''}
+              ${etabPhone ? `
               <tr>
                 <td class="label">Téléphone:</td>
-                <td>${etablissementInfo.phone || '-'}</td>
+                <td>${etabPhone}</td>
               </tr>
+              ` : ''}
+              ${etabEmail ? `
               <tr>
                 <td class="label">Email:</td>
-                <td>${etablissementInfo.email || '-'}</td>
+                <td>${etabEmail}</td>
               </tr>
+              ` : ''}
             </table>
           </div>
-          ` : ''}
 
           ${userInfo ? `
           <div class="section">
@@ -475,12 +507,6 @@ export default function CreerDevisPage() {
                 <td class="label">Email:</td>
                 <td>${userInfo.email || '-'}</td>
               </tr>
-              ${etablissementInfo ? `
-              <tr>
-                <td class="label">Établissement:</td>
-                <td>${etablissementInfo.name}</td>
-              </tr>
-              ` : ''}
             </table>
           </div>
           ` : ''}
