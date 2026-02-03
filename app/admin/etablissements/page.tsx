@@ -1,5 +1,3 @@
-// app/admin/utilisateurs/page.tsx
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -23,7 +21,6 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Trash2, CheckCircle2, AlertCircle, X, Loader2, Edit2, ChevronLeft, ChevronRight } from "lucide-react"
 
-/* ================= Types ================= */
 
 type UserRole = "ADMIN" | "RESPONSABLE" | "ETABLISSEMENT"
 
@@ -51,11 +48,9 @@ interface AlertMessage {
   message: string
 }
 
-/* ================= Constants ================= */
 
 const ITEMS_PER_PAGE = 20
 
-/* ================= Utils ================= */
 
 function getRoleLabel(role: UserRole) {
   const labels: Record<UserRole, string> = {
@@ -75,7 +70,6 @@ function getRoleColor(role: UserRole) {
   return colors[role]
 }
 
-/* ================= Page ================= */
 
 export default function UtilisateursPage() {
   const [users, setUsers] = useState<User[]>([])
@@ -91,9 +85,7 @@ export default function UtilisateursPage() {
   const [totalUsers, setTotalUsers] = useState(0)
 
   useEffect(() => {
-    // ✅ OPTIMIZED: Load établissements ONCE on mount
     fetchEtablissements()
-    // Load first page of users
     fetchUsers(1)
   }, [])
 
@@ -104,14 +96,13 @@ export default function UtilisateursPage() {
     }
   }, [alertMessage])
 
-  // ✅ OPTIMIZED: Separate function to fetch établissements (only once)
   const fetchEtablissements = async () => {
     try {
       const etabResponse = await fetch("/api/etablissements")
       if (!etabResponse.ok) throw new Error("Erreur lors du chargement des établissements")
       const etabData = await etabResponse.json()
       setEtablissements(etabData)
-      console.log("✅ Établissements loaded once")
+      console.log("Établissements loaded once")
     } catch (error) {
       console.error("Erreur:", error)
       setAlertMessage({
@@ -122,20 +113,18 @@ export default function UtilisateursPage() {
     }
   }
 
-  // ✅ OPTIMIZED: Separate function to fetch users (with pagination)
   const fetchUsers = async (page: number = 1) => {
     try {
       const isFirstPage = page === 1
       isFirstPage ? setIsLoading(true) : setIsLoadingMore(true)
       
-      // ✅ Fetch ONLY users with pagination
       const usersResponse = await fetch(
         `/api/etablissements?type=users&page=${page}&limit=${ITEMS_PER_PAGE}`
       )
       if (!usersResponse.ok) throw new Error("Erreur lors du chargement des utilisateurs")
       const usersData = await usersResponse.json()
       
-      console.log(`📊 Users: Page ${page}`, usersData)
+      console.log(`Users: Page ${page}`, usersData)
       
       setUsers(usersData.data || [])
       setTotalUsers(usersData.pagination?.total || 0)
@@ -199,7 +188,6 @@ export default function UtilisateursPage() {
         title: "Succès",
         message: "Utilisateur supprimé avec succès",
       })
-      // Refresh data to update counts
       fetchUsers(currentPage)
     } catch (error) {
       setAlertMessage({
@@ -211,8 +199,6 @@ export default function UtilisateursPage() {
       setDeletingId(null)
     }
   }
-
-  // ✅ Page navigation
   const goToPage = (page: number) => {
     const pageNum = Math.max(1, Math.min(page, totalPages))
     fetchUsers(pageNum)
@@ -340,7 +326,6 @@ export default function UtilisateursPage() {
                           <TableHead>Téléphone</TableHead>
                           <TableHead>Établissement</TableHead>
                           <TableHead>Rôle</TableHead>
-                          <TableHead>Statut</TableHead>
                           <TableHead className="text-center">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -369,26 +354,10 @@ export default function UtilisateursPage() {
                                 {getRoleLabel(user.role)}
                               </span>
                             </TableCell>
-                            <TableCell>
-                              <span
-                                className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                  user.isActive
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
-                              >
-                                {user.isActive ? "Actif" : "Inactif"}
-                              </span>
-                            </TableCell>
+                           
                             <TableCell className="text-center">
                               <div className="flex gap-2 justify-center">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={deletingId === user.id}
-                                >
-                                  <Edit2 className="h-4 w-4" />
-                                </Button>
+                               
                                 <Button
                                   size="sm"
                                   variant="destructive"

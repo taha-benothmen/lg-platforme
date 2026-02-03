@@ -152,30 +152,6 @@ function getStatusVariant(status: string): "default" | "secondary" | "destructiv
   return statusVariants[status] || "outline"
 }
 
-function downloadQuote(quote: DevisItem) {
-  const content = `Devis #${quote.id}
-
-Client: ${quote.clientName}
-Email: ${quote.clientEmail}
-Téléphone: ${quote.clientPhone || "N/A"}
-Date: ${new Date(quote.createdAt).toLocaleDateString("fr-FR")}
-Total: ${parseFloat(quote.total).toFixed(2)} TND
-État Responsable: ${getStatusLabel(quote.responsableStatus)}
-État Admin: ${adminStatusLabels[quote.adminStatus] || quote.adminStatus}
-
-Créé par: ${quote.createdBy?.firstName} ${quote.createdBy?.lastName}
-Établissement: ${quote.etablissement?.name || "N/A"}
-`
-
-  const blob = new Blob([content], { type: "text/plain" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = `devis-${quote.id}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 const ITEMS_PER_PAGE = 20
 
 export default function AdminDevisPage() {
@@ -198,6 +174,7 @@ export default function AdminDevisPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalDevis, setTotalDevis] = useState(0)
   const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   useEffect(() => {
     setIsClient(true)
@@ -333,6 +310,448 @@ export default function AdminDevisPage() {
       setIsDetailOpen(true)
     } catch (error) {
       showAlert("error", "Erreur", "Impossible de charger les détails du devis")
+    }
+  }
+
+  // ✅ FONCTION AMÉLIORÉE - Download Devis as HTML file with professional styling
+  const handleDownloadDevis = (devisData: DevisItem) => {
+    try {
+      setIsDownloading(true)
+      console.log("📥 Downloading Devis as HTML:", devisData.id)
+
+      // Générer le contenu HTML professionnel
+      const htmlContent = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Devis ${devisData.id.slice(0, 8)}</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 40px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 40px;
+      padding-bottom: 30px;
+      border-bottom: 3px solid #007bff;
+    }
+    
+    .header-left h1 {
+      font-size: 32px;
+      color: #007bff;
+      margin-bottom: 5px;
+    }
+    
+    .header-left p {
+      color: #666;
+      font-size: 14px;
+    }
+    
+    .header-right {
+      text-align: right;
+    }
+    
+    .header-right p {
+      margin: 5px 0;
+      font-size: 14px;
+    }
+    
+    .header-right strong {
+      color: #007bff;
+    }
+    
+    .section {
+      margin-bottom: 35px;
+    }
+    
+    .section-title {
+      font-size: 13px;
+      font-weight: bold;
+      color: #007bff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 15px;
+    }
+    
+    .info-row {
+      display: flex;
+      margin-bottom: 10px;
+    }
+    
+    .info-label {
+      font-weight: bold;
+      color: #007bff;
+      min-width: 150px;
+      font-size: 13px;
+    }
+    
+    .info-value {
+      color: #555;
+      font-size: 13px;
+    }
+    
+    .products-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 13px;
+    }
+    
+    .products-table th {
+      background-color: #007bff;
+      color: white;
+      padding: 12px;
+      text-align: left;
+      font-weight: bold;
+    }
+    
+    .products-table td {
+      padding: 12px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .products-table tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    
+    .text-right {
+      text-align: right;
+    }
+    
+    .total-section {
+      text-align: right;
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 3px solid #007bff;
+    }
+    
+    .total-row {
+      font-size: 18px;
+      font-weight: bold;
+      color: #007bff;
+      margin: 10px 0;
+    }
+    
+    .status-section {
+      margin-top: 30px;
+      padding: 20px;
+      background-color: #f0f7ff;
+      border-left: 4px solid #007bff;
+      border-radius: 4px;
+    }
+    
+    .status-item {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    
+    .status-label {
+      font-weight: bold;
+      color: #007bff;
+      min-width: 150px;
+      font-size: 13px;
+    }
+    
+    .status-value {
+      color: #555;
+      font-size: 13px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background-color: white;
+      border: 1px solid #007bff;
+      display: inline-block;
+    }
+    
+    .status-value.approved {
+      background-color: #d4edda;
+      border-color: #28a745;
+      color: #155724;
+    }
+    
+    .status-value.pending {
+      background-color: #fff3cd;
+      border-color: #ffc107;
+      color: #856404;
+    }
+    
+    .status-value.rejected {
+      background-color: #f8d7da;
+      border-color: #dc3545;
+      color: #721c24;
+    }
+    
+    .status-value.delivering {
+      background-color: #cfe2ff;
+      border-color: #0d6efd;
+      color: #084298;
+    }
+    
+    .status-value.delivered {
+      background-color: #d4edda;
+      border-color: #28a745;
+      color: #155724;
+    }
+    
+    .notes-section {
+      margin-top: 30px;
+      padding: 15px;
+      background-color: #f9f9f9;
+      border-left: 4px solid #ffc107;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .notes-title {
+      font-weight: bold;
+      color: #ffc107;
+      margin-bottom: 10px;
+    }
+    
+    .pdf-section {
+      margin-top: 30px;
+      padding: 15px;
+      background-color: #e7f3ff;
+      border-left: 4px solid #0d6efd;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .pdf-title {
+      font-weight: bold;
+      color: #0d6efd;
+      margin-bottom: 10px;
+    }
+    
+    .footer {
+      margin-top: 50px;
+      text-align: center;
+      font-size: 11px;
+      color: #999;
+      border-top: 1px solid #e0e0e0;
+      padding-top: 20px;
+    }
+    
+    @media print {
+      body {
+        background-color: white;
+      }
+      .container {
+        box-shadow: none;
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-left">
+        <h1>DEVIS</h1>
+        <p>Référence: <strong>${devisData.id.slice(0, 8)}</strong></p>
+      </div>
+      <div class="header-right">
+        <p><strong>Date de création:</strong> ${new Date(devisData.createdAt).toLocaleDateString("fr-FR")}</p>
+        <p><strong>Dernière mise à jour:</strong> ${new Date(devisData.updatedAt).toLocaleDateString("fr-FR")}</p>
+      </div>
+    </div>
+
+    <!-- ÉTABLISSEMENT -->
+    ${devisData.etablissement ? `
+    <div class="section">
+      <div class="section-title">📦 Établissement</div>
+      <div class="info-row">
+        <span class="info-label">Nom:</span>
+        <span class="info-value">${devisData.etablissement.name}</span>
+      </div>
+    </div>
+    ` : ''}
+
+    <!-- RESPONSABLE -->
+    ${devisData.createdBy ? `
+    <div class="section">
+      <div class="section-title">👤 Responsable</div>
+      <div class="info-row">
+        <span class="info-label">Nom:</span>
+        <span class="info-value">${devisData.createdBy.firstName} ${devisData.createdBy.lastName}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Email:</span>
+        <span class="info-value">${devisData.createdBy.email}</span>
+      </div>
+    </div>
+    ` : ''}
+
+    <!-- CLIENT -->
+    <div class="section">
+      <div class="section-title">👥 Informations du Client</div>
+      <div class="info-grid">
+        <div>
+          <div class="info-row">
+            <span class="info-label">Nom:</span>
+            <span class="info-value">${devisData.clientName}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Email:</span>
+            <span class="info-value">${devisData.clientEmail}</span>
+          </div>
+          ${devisData.clientPhone ? `
+          <div class="info-row">
+            <span class="info-label">Téléphone:</span>
+            <span class="info-value">${devisData.clientPhone}</span>
+          </div>
+          ` : ''}
+        </div>
+        <div>
+          ${devisData.clientEnterprise ? `
+          <div class="info-row">
+            <span class="info-label">Entreprise:</span>
+            <span class="info-value">${devisData.clientEnterprise}</span>
+          </div>
+          ` : ''}
+          ${devisData.clientAddr ? `
+          <div class="info-row">
+            <span class="info-label">Adresse:</span>
+            <span class="info-value">${devisData.clientAddr}</span>
+          </div>
+          ` : ''}
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUITS -->
+    <div class="section">
+      <div class="section-title">📋 Produits</div>
+      ${devisData.items && devisData.items.length > 0 ? `
+      <table class="products-table">
+        <thead>
+          <tr>
+            <th>Produit</th>
+            <th style="width: 80px;">Quantité</th>
+            <th style="width: 120px;">Prix Unitaire</th>
+            <th class="text-right" style="width: 120px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${devisData.items.map((item: any) => `
+          <tr>
+            <td>${item.product?.name || 'Produit'}</td>
+            <td>${item.quantity}</td>
+            <td class="text-right">${parseFloat(item.price).toFixed(2)} TND</td>
+            <td class="text-right"><strong>${(parseFloat(item.price) * item.quantity).toFixed(2)} TND</strong></td>
+          </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ` : '<p style="color: #999; font-style: italic;">Aucun produit</p>'}
+    </div>
+
+    <!-- TOTAL -->
+    <div class="total-section">
+      <div class="total-row">
+        TOTAL: ${parseFloat(devisData.total).toFixed(2)} TND
+      </div>
+    </div>
+
+    <!-- STATUTS -->
+    <div class="status-section">
+      <div class="section-title" style="border-bottom: none; margin-bottom: 15px;">🔐 Statuts</div>
+      <div class="status-item">
+        <span class="status-label">Responsable:</span>
+        <span class="status-value ${devisData.responsableStatus === 'APPROUVE' ? 'approved' : devisData.responsableStatus === 'EN_ATTENTE' ? 'pending' : 'rejected'}">
+          ${statusLabels[devisData.responsableStatus] || devisData.responsableStatus}
+        </span>
+      </div>
+      ${devisData.responsableStatus === "APPROUVE" ? `
+      <div class="status-item">
+        <span class="status-label">Admin (Livraison):</span>
+        <span class="status-value ${
+          devisData.adminStatus === 'LIVREE' ? 'delivered' : 
+          devisData.adminStatus === 'EN_COURS_DE_LIVRAISON' ? 'delivering' :
+          devisData.adminStatus === 'REJETE' ? 'rejected' : 'pending'
+        }">
+          ${adminStatusLabels[devisData.adminStatus] || devisData.adminStatus}
+        </span>
+      </div>
+      ` : ''}
+    </div>
+
+    <!-- NOTES -->
+    ${devisData.clientNotes ? `
+    <div class="notes-section">
+      <div class="notes-title">📝 Notes du Client</div>
+      <p>${devisData.clientNotes.replace(/\n/g, '<br>')}</p>
+    </div>
+    ` : ''}
+
+    <!-- PDF SECTION -->
+    ${devisData.hasInvoicePdf ? `
+    <div class="pdf-section">
+      <div class="pdf-title">📄 Facture PDF</div>
+      <p><strong>Fichier:</strong> ${devisData.invoicePdfName}</p>
+      ${devisData.invoicePdfUploadedAt ? `<p><strong>Uploadé le:</strong> ${new Date(devisData.invoicePdfUploadedAt).toLocaleDateString("fr-FR")}</p>` : ''}
+    </div>
+    ` : ''}
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <p>Ce devis a été généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}</p>
+      <p>Document confidentiel - Réservé aux parties autorisées</p>
+    </div>
+  </div>
+</body>
+</html>`
+
+      // Créer le blob et télécharger
+      const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `devis-${devisData.id.slice(0, 8)}.html`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log("✅ Devis HTML downloaded successfully")
+      showAlert("success", "Téléchargement réussi", `Le devis a été téléchargé: devis-${devisData.id.slice(0, 8)}.html`)
+    } catch (error) {
+      console.error("❌ Download error:", error)
+      showAlert("error", "Erreur", "Impossible de télécharger le devis")
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -626,11 +1045,16 @@ export default function AdminDevisPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => downloadQuote(q)}
+                                  onClick={() => handleDownloadDevis(q)}
+                                  disabled={isDownloading}
                                   className="gap-2"
-                                  title="Télécharger"
+                                  title="Télécharger en HTML"
                                 >
-                                  <Download className="h-4 w-4" />
+                                  {isDownloading ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Download className="h-4 w-4" />
+                                  )}
                                 </Button>
                               </div>
                             </TableCell>

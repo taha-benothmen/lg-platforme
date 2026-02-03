@@ -1,18 +1,19 @@
 // app/api/etablissements/[id]/route.ts
+// ✅ CORRECTION: params doit être await en Next.js 15
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // GET - Récupérer un établissement spécifique
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id } = params
+    const { id } = await params  // ✅ AWAIT les params
 
     if (!id) {
       return NextResponse.json(
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PUT - Modifier un établissement
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id } = params
+    const { id } = await params  // ✅ AWAIT les params
 
     if (!id) {
       return NextResponse.json(
@@ -126,7 +127,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 // DELETE - Supprimer un établissement
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id } = params
+    const { id } = await params  // ✅ AWAIT les params
 
     if (!id) {
       return NextResponse.json(
