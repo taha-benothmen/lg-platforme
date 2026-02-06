@@ -22,15 +22,24 @@ enum DevisStatus {
 }
 
 enum AdminDevisStatus {
-  EN_ATTENTE_DE_LIVRAISON
+  EN_COURS_DE_FACTURATION
   EN_COURS_DE_LIVRAISON
   LIVREE
   REJETE
 }
+
 enum StockStatus {
   DISPONIBLE
   HORS_STOCK
 }
+
+enum NotificationType {
+  DEVIS_CREATED
+  DEVIS_STATUS_CHANGED
+  DEVIS_APPROVED
+  DEVIS_REJECTED
+}
+
 model User {
   id    String   @id @default(uuid())
   email String   @unique
@@ -51,6 +60,9 @@ model User {
   createdDevis      Devis[] @relation("CreatedBy")
   validatedDevis    Devis[] @relation("ValidatedBy")
   adminValidatedDevis Devis[] @relation("AdminValidatedBy")
+
+  // Notifications
+  notifications Notification[]
 
   @@map("lg_dbusers")
 }
@@ -116,7 +128,7 @@ model Devis {
   
   // Statuts séparés pour Responsable et Admin
   responsableStatus DevisStatus @default(EN_ATTENTE)
-  adminStatus       AdminDevisStatus @default(EN_ATTENTE_DE_LIVRAISON)
+  adminStatus       AdminDevisStatus @default(EN_COURS_DE_FACTURATION)
 
   // Client information
   clientName      String      @db.VarChar(255)
@@ -149,6 +161,7 @@ model Devis {
   updatedAt       DateTime    @updatedAt
 
   items           DevisItem[]
+  notifications   Notification[]
 
   @@map("devis")
 }
@@ -166,4 +179,28 @@ model DevisItem {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("devis_items")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type        NotificationType
+  title       String   @db.VarChar(255)
+  message     String   @db.Text
+  
+  devisId     String?
+  devis       Devis?   @relation(fields: [devisId], references: [id], onDelete: SetNull)
+  
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("notifications")
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
 }

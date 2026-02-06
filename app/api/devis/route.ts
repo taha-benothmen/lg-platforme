@@ -463,7 +463,7 @@ export async function POST(request: NextRequest) {
         clientNotes: body.client.notes?.trim() || null,
         total: totalAmount,
         responsableStatus: "EN_ATTENTE",
-        adminStatus: "EN_ATTENTE_DE_LIVRAISON",
+        adminStatus : "EN_COURS_DE_FACTURATION",
         createdById: body.userId,
         etablissementId: user.etablissementId,
         items: {
@@ -586,7 +586,7 @@ export async function PUT(request: NextRequest) {
 
     const validResponsableStatuses = ["EN_ATTENTE", "APPROUVE", "SUSPENDU", "REJETE"]
     const validAdminStatuses = [
-      "EN_ATTENTE_DE_LIVRAISON",
+      "EN_COURS_DE_FACTURATION",
       "EN_COURS_DE_LIVRAISON",
       "LIVREE",
       "REJETE",
@@ -645,7 +645,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const validAdminTransitions: Record<string, string[]> = {
-      EN_ATTENTE_DE_LIVRAISON: ["EN_COURS_DE_LIVRAISON", "REJETE"],
+      EN_COURS_DE_FACTURATION: ["EN_COURS_DE_LIVRAISON", "REJETE"],
       EN_COURS_DE_LIVRAISON: ["LIVREE", "REJETE"],
       LIVREE: [],
       REJETE: [],

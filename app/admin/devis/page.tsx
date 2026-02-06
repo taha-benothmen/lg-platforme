@@ -63,7 +63,7 @@ type DevisItem = {
   clientNotes?: string
   total: string
   responsableStatus: "EN_ATTENTE" | "APPROUVE" | "SUSPENDU" | "REJETE"
-  adminStatus: "EN_ATTENTE_DE_LIVRAISON" | "EN_COURS_DE_LIVRAISON" | "LIVREE" | "REJETE"
+  adminStatus: "EN_COURS_DE_FACTURATION" | "EN_COURS_DE_LIVRAISON" | "LIVREE" | "REJETE"
   hasInvoicePdf: boolean
   invoicePdfName?: string
   invoicePdfUploadedAt?: string
@@ -131,14 +131,14 @@ const STATUS_CLASSES: Record<string, string> = {
 }
 
 const adminStatusLabels: Record<string, string> = {
-  EN_ATTENTE_DE_LIVRAISON: "En attente de livraison",
+  EN_COURS_DE_FACTURATION: "En cours de facturation",
   EN_COURS_DE_LIVRAISON: "En cours de livraison",
   LIVREE: "Livrée",
   REJETE: "Rejeté",
 }
 
 const adminStatusClasses: Record<string, string> = {
-  EN_ATTENTE_DE_LIVRAISON: "bg-blue-100 text-blue-900",
+  EN_COURS_DE_FACTURATION: "bg-blue-100 text-blue-900",
   EN_COURS_DE_LIVRAISON: "bg-purple-100 text-purple-900",
   LIVREE: "bg-green-100 text-green-900",
   REJETE: "bg-red-100 text-red-900",
@@ -697,11 +697,10 @@ export default function AdminDevisPage() {
       ${devisData.responsableStatus === "APPROUVE" ? `
       <div class="status-item">
         <span class="status-label">Admin (Livraison):</span>
-        <span class="status-value ${
-          devisData.adminStatus === 'LIVREE' ? 'delivered' : 
-          devisData.adminStatus === 'EN_COURS_DE_LIVRAISON' ? 'delivering' :
-          devisData.adminStatus === 'REJETE' ? 'rejected' : 'pending'
-        }">
+        <span class="status-value ${devisData.adminStatus === 'LIVREE' ? 'delivered' :
+            devisData.adminStatus === 'EN_COURS_DE_LIVRAISON' ? 'delivering' :
+              devisData.adminStatus === 'REJETE' ? 'rejected' : 'pending'
+          }">
           ${adminStatusLabels[devisData.adminStatus] || devisData.adminStatus}
         </span>
       </div>
@@ -767,14 +766,42 @@ export default function AdminDevisPage() {
 
   const handleUpdateStatus = async (statusType: "responsable" | "admin", newStatus: string) => {
     if (!selectedDevis || !userId) {
-      console.error("❌ Missing required data:", { 
-        selectedDevisExists: !!selectedDevis, 
-        userIdExists: !!userId 
+      console.error("❌ Missing required data:", {
+        selectedDevisExists: !!selectedDevis,
+        userIdExists: !!userId
       })
       showAlert("error", "Erreur", "Données manquantes pour la mise à jour")
       return
     }
 
+    try {
+      console.log("📢 Sending notification...")
+
+      const adminStatusLabels: Record<string, string> = {
+        EN_COURS_DE_FACTURATION: "En cours de facturation",
+        EN_COURS_DE_LIVRAISON: "En cours de livraison",
+        LIVREE: "Livrée",
+        REJETE: "Rejeté",
+      }
+
+      const statusLabel = statusType === "admin"
+        ? adminStatusLabels[newStatus]
+        : newStatus
+
+      await fetch("/api/notifications/send-to-devis-creator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          devisId: selectedDevis.id,
+          title: `Changement de statut de livraison: ${statusLabel}`,
+          message: `Le statut de livraison de votre devis pour ${selectedDevis.clientName} a été changé en "${statusLabel}"`,
+        })
+      })
+
+      console.log("✅ Notification sent")
+    } catch (error) {
+      console.error("⚠️ Error sending notification:", error)
+    }
     try {
       setIsUpdatingStatus(true)
       console.log("🔄 Updating devis status", {
@@ -786,7 +813,7 @@ export default function AdminDevisPage() {
       const formData = new FormData()
       formData.append("devisId", selectedDevis.id)
       formData.append("userId", userId)
-      
+
       if (statusType === "responsable") {
         formData.append("responsableStatus", newStatus)
       } else if (statusType === "admin") {
@@ -829,11 +856,11 @@ export default function AdminDevisPage() {
       setSelectedPdfFile(null)
       await loadAllDevis(currentPage)
 
-      const statusLabel = 
-        statusType === "admin" 
-          ? adminStatusLabels[newStatus] 
+      const statusLabel =
+        statusType === "admin"
+          ? adminStatusLabels[newStatus]
           : statusLabels[newStatus]
-      
+
       showAlert("success", "Succès", `Statut mis à jour: ${statusLabel}`)
 
     } catch (error) {
@@ -919,7 +946,7 @@ export default function AdminDevisPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">Tous les statuts</SelectItem>
-                    <SelectItem value="EN_ATTENTE_DE_LIVRAISON">En attente livraison</SelectItem>
+                    <SelectItem value="EN_COURS_DE_FACTURATION">En attente livraison</SelectItem>
                     <SelectItem value="EN_COURS_DE_LIVRAISON">En cours livraison</SelectItem>
                     <SelectItem value="LIVREE">Livrée</SelectItem>
                     <SelectItem value="REJETE">Rejeté</SelectItem>
@@ -1311,7 +1338,7 @@ export default function AdminDevisPage() {
 
           <DialogFooter className="flex-col gap-3">
             {selectedDevis?.responsableStatus === "APPROUVE" &&
-              selectedDevis?.adminStatus === "EN_ATTENTE_DE_LIVRAISON" && (
+              selectedDevis?.adminStatus === "EN_COURS_DE_FACTURATION" && (
                 <div className="w-full space-y-3">
                   <div className="flex gap-2 w-full">
                     <Button

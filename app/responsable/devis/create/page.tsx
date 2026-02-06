@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { menusByRole } from "@/lib/data/menus"
+import { notificationService } from "@/lib/notification.service"
 import { FileText, ShoppingCart, Download, Share2, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Info, X, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
 import {
   Select,
@@ -692,6 +693,7 @@ export default function CreerDevisPage() {
       showAlert("destructive", "Erreur", "Une erreur est survenue lors de la création du devis")
       setIsSubmitting(false)
     }
+    
   }
 
   // Loading state

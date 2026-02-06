@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { notificationService } from "@/lib/notification.service"
 import {
   Dialog,
   DialogContent,
@@ -139,7 +140,7 @@ export default function DevisPage() {
     title: "",
     description: ""
   })
-  
+
   const [currentPage, setCurrentPage] = useState(1)
 
   const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
@@ -196,11 +197,11 @@ export default function DevisPage() {
 
       const url = new URL("/api/devis", window.location.origin)
       url.searchParams.set("userId", currentUserId)
-      
+
       if (responsableStatusFilter !== "ALL") {
         url.searchParams.set("responsableStatus", responsableStatusFilter)
       }
-      
+
       if (etablissementFilter !== "ALL") {
         url.searchParams.set("etablissementId", etablissementFilter)
       }
@@ -649,10 +650,10 @@ export default function DevisPage() {
 
       // Get the blob from response
       const blob = await response.blob()
-      
+
       // Create a URL for the blob
       const downloadUrl = window.URL.createObjectURL(blob)
-      
+
       // Create a temporary link and click it
       const link = document.createElement("a")
       link.href = downloadUrl
@@ -660,7 +661,7 @@ export default function DevisPage() {
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      
+
       // Clean up the URL
       window.URL.revokeObjectURL(downloadUrl)
 
@@ -681,7 +682,7 @@ export default function DevisPage() {
     }
 
     const confirmed = window.confirm("Êtes-vous sûr de vouloir supprimer ce devis ?")
-    
+
     if (!confirmed) {
       return
     }
@@ -749,11 +750,11 @@ export default function DevisPage() {
         prev.map((d) =>
           d.id === id
             ? {
-                ...d,
-                responsableStatus: statusType === "responsable" ? (newStatus as any) : d.responsableStatus,
-                adminStatus: statusType === "admin" ? (newStatus as any) : d.adminStatus,
-                updatedAt: new Date().toISOString(),
-              }
+              ...d,
+              responsableStatus: statusType === "responsable" ? (newStatus as any) : d.responsableStatus,
+              adminStatus: statusType === "admin" ? (newStatus as any) : d.adminStatus,
+              updatedAt: new Date().toISOString(),
+            }
             : d
         )
       )
@@ -762,11 +763,11 @@ export default function DevisPage() {
         setSelectedDevis((prev) =>
           prev
             ? {
-                ...prev,
-                responsableStatus: statusType === "responsable" ? (newStatus as any) : prev.responsableStatus,
-                adminStatus: statusType === "admin" ? (newStatus as any) : prev.adminStatus,
-                updatedAt: new Date().toISOString(),
-              }
+              ...prev,
+              responsableStatus: statusType === "responsable" ? (newStatus as any) : prev.responsableStatus,
+              adminStatus: statusType === "admin" ? (newStatus as any) : prev.adminStatus,
+              updatedAt: new Date().toISOString(),
+            }
             : null
         )
       }
@@ -778,12 +779,52 @@ export default function DevisPage() {
     } finally {
       setUpdatingStatus(false)
     }
+    try {
+      console.log("📢 Notifying admins about status change...")
+    
+      const adminsResponse = await fetch("/api/utilisateurs?role=ADMIN&isActive=true")
+      const adminsData = await adminsResponse.json()
+      const admins = adminsData.data || []
+    
+      console.log(`Found ${admins.length} admins to notify`)
+    
+      // ✅ AJOUTER UNE MAP POUR LES LABELS:
+      const STATUS_LABELS_MAP: Record<string, string> = {
+        EN_ATTENTE: "En attente",
+        APPROUVE: "Approuvé",
+        SUSPENDU: "Suspendu",
+        REJETE: "Rejeté",
+      }
+    
+      const statusLabel = STATUS_LABELS_MAP[newStatus] || newStatus
+    
+      for (const admin of admins) {
+        try {
+          await fetch("/api/notifications/send-to-all-admins", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              devisId: id,
+              // ✅ TITRE DYNAMIQUE AVEC LE NOUVEAU STATUS:
+              title: `Changement de statut devis: ${statusLabel}`,
+              message: `Le devis pour ${selectedDevis?.clientName} a changé de status en "${statusLabel}"`,
+            })
+          })
+        } catch (error) {
+          console.error("Error notifying admin:", error)
+        }
+      }
+    
+      console.log(`✅ ${admins.length} admins notifiés`)
+    } catch (error) {
+      console.error("⚠️ Error notifying admins:", error)
+    }
   }
 
   const handleShareDevis = async (devisData: DevisItem) => {
     try {
       const shareText = `Devis ${devisData.id.slice(0, 8)}\nClient: ${devisData.clientName}\nTotal: ${parseFloat(devisData.total).toFixed(2)} TND`
-      
+
       if (navigator.share) {
         await navigator.share({
           title: `Devis ${devisData.id.slice(0, 8)}`,
@@ -806,7 +847,7 @@ export default function DevisPage() {
       showAlert("destructive", "Erreur", "ID utilisateur non trouvé")
       return
     }
-    
+
     router.push("/responsable/devis/create")
   }
 
@@ -888,7 +929,7 @@ export default function DevisPage() {
                   </SelectContent>
                 </Select>
 
-                
+
                 <div className="relative w-full sm:w-72">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -945,7 +986,7 @@ export default function DevisPage() {
                             <div className="flex flex-col gap-1">
                               <span className="text-xs font-semibold text-muted-foreground">Responsable</span>
                               <Badge variant={getStatusBadgeVariant(d.responsableStatus)}
-                               className={STATUS_CLASSES[d.responsableStatus]}>
+                                className={STATUS_CLASSES[d.responsableStatus]}>
                                 {STATUS_LABELS[d.responsableStatus] || d.responsableStatus}
                               </Badge>
                             </div>
@@ -953,7 +994,7 @@ export default function DevisPage() {
                               <div className="flex flex-col gap-1">
                                 <span className="text-xs font-semibold text-muted-foreground">Admin</span>
                                 <Badge variant={getStatusBadgeVariant(d.adminStatus)}
-                                 className={STATUS_CLASSES[d.adminStatus]}>
+                                  className={STATUS_CLASSES[d.adminStatus]}>
                                   {STATUS_LABELS[d.adminStatus] || d.adminStatus}
                                 </Badge>
                               </div>
@@ -977,9 +1018,9 @@ export default function DevisPage() {
                                 {parseFloat(d.total).toFixed(2)} TND
                               </p>
                               {/* ✅ Download Devis button */}
-                              <Button 
-                                size="icon" 
-                                variant="outline" 
+                              <Button
+                                size="icon"
+                                variant="outline"
                                 className="shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -994,9 +1035,9 @@ export default function DevisPage() {
                                   <Download className="h-4 w-4" />
                                 )}
                               </Button>
-                              <Button 
-                                size="icon" 
-                                variant="outline" 
+                              <Button
+                                size="icon"
+                                variant="outline"
                                 className="shrink-0"
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -1111,7 +1152,7 @@ export default function DevisPage() {
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-semibold text-muted-foreground">Responsable</span>
                       <Badge variant={getStatusBadgeVariant(selectedDevis.responsableStatus)}
-                       className={STATUS_CLASSES[selectedDevis.responsableStatus]}>
+                        className={STATUS_CLASSES[selectedDevis.responsableStatus]}>
                         {STATUS_LABELS[selectedDevis.responsableStatus] || selectedDevis.responsableStatus}
                       </Badge>
                     </div>
@@ -1119,7 +1160,7 @@ export default function DevisPage() {
                       <div className="flex flex-col gap-1">
                         <span className="text-xs font-semibold text-muted-foreground">Admin</span>
                         <Badge variant={getStatusBadgeVariant(selectedDevis.adminStatus)}
-                         className={STATUS_CLASSES[selectedDevis.adminStatus]}>
+                          className={STATUS_CLASSES[selectedDevis.adminStatus]}>
                           {STATUS_LABELS[selectedDevis.adminStatus] || selectedDevis.adminStatus}
                         </Badge>
                       </div>
