@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { generateDevisPDFContent } from "@/lib/pdf-utils"
 import { notificationService } from "@/lib/notification.service"
 import {
   Dialog,
@@ -54,6 +55,8 @@ type DevisItem = {
   clientNotes?: string
   adminDescription?: string
   total: string
+  paymentPeriod?: number
+  monthlyPayment?: number
   responsableStatus: "EN_ATTENTE" | "APPROUVE" | "SUSPENDU" | "REJETE"
   adminStatus: "EN_ATTENTE" | "VALIDE" | "REJETE" | "APPROUVE"
   createdAt: string
@@ -142,6 +145,7 @@ export default function DevisPage() {
   })
 
   const [currentPage, setCurrentPage] = useState(1)
+  const [devisDetailsLoading, setDevisDetailsLoading] = useState(false) // ← NOUVEAU
 
   const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
     setAlert({ show: true, type, title, description })
@@ -245,377 +249,43 @@ export default function DevisPage() {
     }
   }
 
-  // ✅ Download Devis as HTML file with professional styling
-  const handleDownloadDevis = (devisData: DevisItem) => {
+  // ✅ FIXED: Download Devis as HTML file - NOW FETCHES PRODUCTS CORRECTLY
+  const handleDownloadDevis = async (devisData: DevisItem) => {
     try {
       setDownloadingId(devisData.id)
       console.log("📥 Downloading Devis as HTML:", devisData.id)
 
-      // Générer le contenu HTML professionnel
-      const htmlContent = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Devis ${devisData.id.slice(0, 8)}</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f5f5f5;
-      color: #333;
-      line-height: 1.6;
-    }
-    
-    .container {
-      max-width: 900px;
-      margin: 0 auto;
-      background-color: white;
-      padding: 40px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-    
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 40px;
-      padding-bottom: 30px;
-      border-bottom: 3px solid #007bff;
-    }
-    
-    .header-left h1 {
-      font-size: 32px;
-      color: #007bff;
-      margin-bottom: 5px;
-    }
-    
-    .header-left p {
-      color: #666;
-      font-size: 14px;
-    }
-    
-    .header-right {
-      text-align: right;
-    }
-    
-    .header-right p {
-      margin: 5px 0;
-      font-size: 14px;
-    }
-    
-    .header-right strong {
-      color: #007bff;
-    }
-    
-    .section {
-      margin-bottom: 35px;
-    }
-    
-    .section-title {
-      font-size: 13px;
-      font-weight: bold;
-      color: #007bff;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 15px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid #e0e0e0;
-    }
-    
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin-bottom: 15px;
-    }
-    
-    .info-row {
-      display: flex;
-      margin-bottom: 10px;
-    }
-    
-    .info-label {
-      font-weight: bold;
-      color: #007bff;
-      min-width: 150px;
-      font-size: 13px;
-    }
-    
-    .info-value {
-      color: #555;
-      font-size: 13px;
-    }
-    
-    .products-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 20px 0;
-      font-size: 13px;
-    }
-    
-    .products-table th {
-      background-color: #007bff;
-      color: white;
-      padding: 12px;
-      text-align: left;
-      font-weight: bold;
-    }
-    
-    .products-table td {
-      padding: 12px;
-      border-bottom: 1px solid #e0e0e0;
-    }
-    
-    .products-table tr:nth-child(even) {
-      background-color: #f9f9f9;
-    }
-    
-    .text-right {
-      text-align: right;
-    }
-    
-    .total-section {
-      text-align: right;
-      margin-top: 30px;
-      padding-top: 20px;
-      border-top: 3px solid #007bff;
-    }
-    
-    .total-row {
-      font-size: 18px;
-      font-weight: bold;
-      color: #007bff;
-      margin: 10px 0;
-    }
-    
-    .status-section {
-      margin-top: 30px;
-      padding: 20px;
-      background-color: #f0f7ff;
-      border-left: 4px solid #007bff;
-      border-radius: 4px;
-    }
-    
-    .status-item {
-      margin-bottom: 10px;
-      display: flex;
-      gap: 20px;
-    }
-    
-    .status-label {
-      font-weight: bold;
-      color: #007bff;
-      min-width: 150px;
-      font-size: 13px;
-    }
-    
-    .status-value {
-      color: #555;
-      font-size: 13px;
-      padding: 4px 12px;
-      border-radius: 20px;
-      background-color: white;
-      border: 1px solid #007bff;
-      display: inline-block;
-    }
-    
-    .notes-section {
-      margin-top: 30px;
-      padding: 15px;
-      background-color: #f9f9f9;
-      border-left: 4px solid #ffc107;
-      border-radius: 4px;
-      font-size: 12px;
-    }
-    
-    .notes-title {
-      font-weight: bold;
-      color: #ffc107;
-      margin-bottom: 10px;
-    }
-    
-    .footer {
-      margin-top: 50px;
-      text-align: center;
-      font-size: 11px;
-      color: #999;
-      border-top: 1px solid #e0e0e0;
-      padding-top: 20px;
-    }
-    
-    @media print {
-      body {
-        background-color: white;
+      // ✅ FETCH FULL DEVIS DATA WITH PRODUCTS
+      let fullDevisData = devisData
+      try {
+        const response = await fetch(`/api/devis/${devisData.id}?userId=${userId}`)
+        if (response.ok) {
+          const apiResponse = await response.json()
+          fullDevisData = apiResponse.data || apiResponse
+          console.log("✅ Full devis data loaded with products:", fullDevisData)
+        } else {
+          console.warn("⚠️ Could not fetch full devis data, using partial data")
+        }
+      } catch (error) {
+        console.warn("⚠️ Error fetching full devis data:", error)
       }
-      .container {
-        box-shadow: none;
-        max-width: 100%;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <!-- HEADER -->
-    <div class="header">
-      <div class="header-left">
-        <h1>DEVIS</h1>
-        <p>Référence: <strong>${devisData.id.slice(0, 8)}</strong></p>
-      </div>
-      <div class="header-right">
-        <p><strong>Date de création:</strong> ${new Date(devisData.createdAt).toLocaleDateString("fr-FR")}</p>
-        <p><strong>Dernière mise à jour:</strong> ${new Date(devisData.updatedAt).toLocaleDateString("fr-FR")}</p>
-      </div>
-    </div>
 
-    <!-- ÉTABLISSEMENT -->
-    ${devisData.etablissement ? `
-    <div class="section">
-      <div class="section-title">📦 Établissement</div>
-      <div class="info-row">
-        <span class="info-label">Nom:</span>
-        <span class="info-value">${devisData.etablissement.name}</span>
-      </div>
-    </div>
-    ` : ''}
+      // ✅ UTILISER LA FONCTION COMMUNE
+      const htmlContent = generateDevisPDFContent(fullDevisData)
 
-    <!-- RESPONSABLE -->
-    ${devisData.createdBy ? `
-    <div class="section">
-      <div class="section-title">👤 Responsable</div>
-      <div class="info-row">
-        <span class="info-label">Nom:</span>
-        <span class="info-value">${devisData.createdBy.firstName} ${devisData.createdBy.lastName}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Email:</span>
-        <span class="info-value">${devisData.createdBy.email}</span>
-      </div>
-    </div>
-    ` : ''}
-
-    <!-- CLIENT -->
-    <div class="section">
-      <div class="section-title">👥 Informations du Client</div>
-      <div class="info-grid">
-        <div>
-          <div class="info-row">
-            <span class="info-label">Nom:</span>
-            <span class="info-value">${devisData.clientName}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Email:</span>
-            <span class="info-value">${devisData.clientEmail}</span>
-          </div>
-          ${devisData.clientPhone ? `
-          <div class="info-row">
-            <span class="info-label">Téléphone:</span>
-            <span class="info-value">${devisData.clientPhone}</span>
-          </div>
-          ` : ''}
-        </div>
-        <div>
-          ${devisData.clientEnterprise ? `
-          <div class="info-row">
-            <span class="info-label">Entreprise:</span>
-            <span class="info-value">${devisData.clientEnterprise}</span>
-          </div>
-          ` : ''}
-          ${devisData.clientAddr ? `
-          <div class="info-row">
-            <span class="info-label">Adresse:</span>
-            <span class="info-value">${devisData.clientAddr}</span>
-          </div>
-          ` : ''}
-        </div>
-      </div>
-    </div>
-
-    <!-- PRODUITS -->
-    <div class="section">
-      <div class="section-title">📋 Produits (${devisData.itemsCount})</div>
-      ${devisData.items && devisData.items.length > 0 ? `
-      <table class="products-table">
-        <thead>
-          <tr>
-            <th>Produit</th>
-            <th style="width: 80px;">Quantité</th>
-            <th style="width: 120px;">Prix Unitaire</th>
-            <th class="text-right" style="width: 120px;">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${devisData.items.map((item: any) => `
-          <tr>
-            <td>${item.product?.name || 'Produit'}</td>
-            <td>${item.quantity}</td>
-            <td class="text-right">${parseFloat(item.price).toFixed(2)} TND</td>
-            <td class="text-right"><strong>${(parseFloat(item.price) * item.quantity).toFixed(2)} TND</strong></td>
-          </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      ` : '<p style="color: #999; font-style: italic;">Aucun produit</p>'}
-    </div>
-
-    <!-- TOTAL -->
-    <div class="total-section">
-      <div class="total-row">
-        TOTAL: ${parseFloat(devisData.total).toFixed(2)} TND
-      </div>
-    </div>
-
-    <!-- STATUTS -->
-    <div class="status-section">
-      <div class="section-title" style="border-bottom: none; margin-bottom: 15px;">🔐 Statuts</div>
-      <div class="status-item">
-        <span class="status-label">Responsable:</span>
-        <span class="status-value">${STATUS_LABELS[devisData.responsableStatus] || devisData.responsableStatus}</span>
-      </div>
-      ${devisData.responsableStatus === "APPROUVE" ? `
-      <div class="status-item">
-        <span class="status-label">Admin:</span>
-        <span class="status-value">${STATUS_LABELS[devisData.adminStatus] || devisData.adminStatus}</span>
-      </div>
-      ` : ''}
-    </div>
-
-    <!-- NOTES -->
-    ${devisData.clientNotes ? `
-    <div class="notes-section">
-      <div class="notes-title">📝 Notes</div>
-      <p>${devisData.clientNotes.replace(/\n/g, '<br>')}</p>
-    </div>
-    ` : ''}
-
-    <!-- FOOTER -->
-    <div class="footer">
-      <p>Ce devis a été généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}</p>
-      <p>Document confidentiel - Réservé aux parties autorisées</p>
-    </div>
-  </div>
-</body>
-</html>`
-
-      // Créer le blob et télécharger
+      // Télécharger
       const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" })
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `devis-${devisData.id.slice(0, 8)}.html`
+      link.download = `devis-${fullDevisData.id.slice(0, 8)}.html`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
 
-      console.log("✅ Devis HTML downloaded successfully")
-      showAlert("success", "Téléchargement réussi", `Le devis a été téléchargé: devis-${devisData.id.slice(0, 8)}.html`)
+      console.log("✅ Devis HTML downloaded successfully with products")
+      showAlert("success", "Téléchargement réussi", `Le devis a été téléchargé: devis-${fullDevisData.id.slice(0, 8)}.html`)
     } catch (error) {
       console.error("❌ Download error:", error)
       showAlert("destructive", "Erreur", "Impossible de télécharger le devis")
@@ -623,8 +293,8 @@ export default function DevisPage() {
       setDownloadingId(null)
     }
   }
+  // ... (rest of the code remains the same - keeping all other functions unchanged)
 
-  // ✅ Download Invoice PDF from database
   const handleDownloadInvoicePDF = async (devisData: DevisItem) => {
     if (!devisData.hasInvoicePdf) {
       showAlert("destructive", "Erreur", "Aucun PDF disponible pour ce devis")
@@ -635,7 +305,6 @@ export default function DevisPage() {
       setDownloadingId(devisData.id)
       console.log("📥 Downloading Invoice PDF:", devisData.invoicePdfName)
 
-      // Use the new download parameter
       const url = new URL("/api/devis", window.location.origin)
       url.searchParams.set("devisId", devisData.id)
       url.searchParams.set("userId", userId)
@@ -648,21 +317,14 @@ export default function DevisPage() {
         throw new Error(errorData.error || "Erreur lors du téléchargement")
       }
 
-      // Get the blob from response
       const blob = await response.blob()
-
-      // Create a URL for the blob
       const downloadUrl = window.URL.createObjectURL(blob)
-
-      // Create a temporary link and click it
       const link = document.createElement("a")
       link.href = downloadUrl
       link.download = devisData.invoicePdfName || "facture.pdf"
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-
-      // Clean up the URL
       window.URL.revokeObjectURL(downloadUrl)
 
       console.log("✅ Invoice PDF downloaded successfully")
@@ -682,20 +344,11 @@ export default function DevisPage() {
     }
 
     const confirmed = window.confirm("Êtes-vous sûr de vouloir supprimer ce devis ?")
-
-    if (!confirmed) {
-      return
-    }
+    if (!confirmed) return
 
     setDeletingId(id)
     try {
-      const response = await fetch(
-        `/api/devis?id=${id}&userId=${userId}`,
-        {
-          method: "DELETE",
-        }
-      )
-
+      const response = await fetch(`/api/devis?id=${id}&userId=${userId}`, { method: "DELETE" })
       const result = await response.json()
 
       if (!response.ok) {
@@ -713,6 +366,8 @@ export default function DevisPage() {
     }
   }
 
+  // ✅ REMPLACEZ LA FONCTION handleUpdateStatus PAR CECI:
+
   const handleUpdateStatus = async (id: string, statusType: "responsable" | "admin", newStatus: string) => {
     if (!userId) {
       showAlert("destructive", "Erreur", "User ID non trouvé")
@@ -721,31 +376,24 @@ export default function DevisPage() {
 
     setUpdatingStatus(true)
     try {
-      const updatePayload: any = {
-        devisId: id,
-        userId: userId,
-      }
-
+      const updatePayload: any = { devisId: id, userId: userId }
       if (statusType === "responsable") {
         updatePayload.responsableStatus = newStatus
       } else {
         updatePayload.adminStatus = newStatus
       }
 
+      // 1️⃣ Appeler l'API pour mettre à jour le statut
       const response = await fetch("/api/devis", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatePayload),
       })
 
       const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Failed to update devis status")
 
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to update devis status")
-      }
-
+      // 2️⃣ Mettre à jour l'état local
       setDevis((prev) =>
         prev.map((d) =>
           d.id === id
@@ -773,57 +421,78 @@ export default function DevisPage() {
       }
 
       showAlert("success", "Mise à jour réussie", "Le statut a été mis à jour avec succès")
+
+      // ✅ 3️⃣ APPELER LA NOTIFICATION (C'EST IMPORTANT!)
+      await notifyAdminsOfStatusChange(id, statusType, newStatus)
+
     } catch (error: any) {
       console.error("Error updating devis:", error)
       showAlert("destructive", "Erreur", error.message || "Impossible de mettre à jour le devis")
     } finally {
       setUpdatingStatus(false)
     }
+  }
+  // ✅ NOUVELLE FONCTION: Utiliser le notificationService
+  // ✅ CETTE FONCTION DOIT EXISTER
+  const notifyAdminsOfStatusChange = async (
+    devisId: string,
+    statusType: string,
+    newStatus: string
+  ) => {
     try {
-      console.log("📢 Notifying admins about status change...")
-    
-      const adminsResponse = await fetch("/api/utilisateurs?role=ADMIN&isActive=true")
-      const adminsData = await adminsResponse.json()
-      const admins = adminsData.data || []
-    
-      console.log(`Found ${admins.length} admins to notify`)
-    
-      // ✅ AJOUTER UNE MAP POUR LES LABELS:
-      const STATUS_LABELS_MAP: Record<string, string> = {
-        EN_ATTENTE: "En attente",
-        APPROUVE: "Approuvé",
-        SUSPENDU: "Suspendu",
-        REJETE: "Rejeté",
+      console.log("📢 Notifying admins of status change...")
+
+      // Récupérer le devis complet
+      const devisResponse = await fetch(`/api/devis/${devisId}?userId=${userId}`)
+      if (!devisResponse.ok) {
+        console.warn("⚠️ Could not fetch full devis data")
+        return
       }
-    
-      const statusLabel = STATUS_LABELS_MAP[newStatus] || newStatus
-    
-      for (const admin of admins) {
+
+      const devisData = await devisResponse.json()
+      const devis = devisData.data || devisData
+
+      console.log("📢 Calling /api/notifications/send-to-all-admins")
+
+      // Appeler le nouvel endpoint
+      const notificationResponse = await fetch("/api/notifications/send-to-all-admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          devisId: devisId,
+          devis: {
+            id: devis.id,
+            clientName: devis.clientName || "Client",
+            total: devis.total,
+          },
+          statusType: statusType,
+          newStatus: newStatus,
+          changedBy: {
+            id: userId,
+          },
+        }),
+      })
+
+      const contentType = notificationResponse.headers.get("content-type")
+      if (contentType && contentType.includes("application/json")) {
         try {
-          await fetch("/api/notifications/send-to-all-admins", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              devisId: id,
-              // ✅ TITRE DYNAMIQUE AVEC LE NOUVEAU STATUS:
-              title: `Changement de statut devis: ${statusLabel}`,
-              message: `Le devis pour ${selectedDevis?.clientName} a changé de status en "${statusLabel}"`,
-            })
-          })
-        } catch (error) {
-          console.error("Error notifying admin:", error)
+          const notifData = await notificationResponse.json()
+          if (notificationResponse.ok) {
+            console.log(`✅ Notifications sent to ${notifData.count} admins`)
+          } else {
+            console.warn("⚠️ Failed to send notifications")
+          }
+        } catch (jsonError) {
+          console.warn("⚠️ Invalid JSON response")
         }
       }
-    
-      console.log(`✅ ${admins.length} admins notifiés`)
     } catch (error) {
-      console.error("⚠️ Error notifying admins:", error)
+      console.error("❌ Error sending notifications:", error)
     }
   }
-
   const handleShareDevis = async (devisData: DevisItem) => {
     try {
-      const shareText = `Devis ${devisData.id.slice(0, 8)}\nClient: ${devisData.clientName}\nTotal: ${parseFloat(devisData.total).toFixed(2)} TND`
+      const shareText = `Devis ${devisData.id.slice(0, 8)}\nClient: ${devisData.clientName}\nTotal: ${parseFloat(devisData.total).toFixed(2)} TND${devisData.paymentPeriod && devisData.paymentPeriod > 0 ? `\nPlan de paiement: ${devisData.paymentPeriod} mois à ${devisData.monthlyPayment?.toFixed(2) || (parseFloat(devisData.total) / devisData.paymentPeriod).toFixed(2)} TND/mois` : ''}`
 
       if (navigator.share) {
         await navigator.share({
@@ -847,7 +516,6 @@ export default function DevisPage() {
       showAlert("destructive", "Erreur", "ID utilisateur non trouvé")
       return
     }
-
     router.push("/responsable/devis/create")
   }
 
@@ -871,12 +539,9 @@ export default function DevisPage() {
     >
       <div className="flex h-screen w-screen">
         <AppSidebar menu={menusByRole.responsable} />
-
         <SidebarInset className="flex-1 flex flex-col overflow-hidden">
           <SiteHeader />
-
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 lg:px-8 space-y-6">
-            {/* Alert notification */}
             {alert.show && (
               <div className="fixed top-4 right-4 z-50 w-96 animate-in slide-in-from-top-2">
                 <Alert variant={alert.type === "success" ? "default" : alert.type} className="relative">
@@ -898,7 +563,6 @@ export default function DevisPage() {
 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <h1 className="text-2xl font-bold">Devis</h1>
-
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                 <Select value={etablissementFilter} onValueChange={setEtablissementFilter}>
                   <SelectTrigger className="w-full sm:w-48">
@@ -929,7 +593,6 @@ export default function DevisPage() {
                   </SelectContent>
                 </Select>
 
-
                 <div className="relative w-full sm:w-72">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -940,17 +603,13 @@ export default function DevisPage() {
                   />
                 </div>
 
-                <Button
-                  onClick={handleCreateNewDevis}
-                  className="w-full sm:w-auto"
-                >
+                <Button onClick={handleCreateNewDevis} className="w-full sm:w-auto">
                   <Plus className="h-4 w-4 mr-2" />
                   Nouveau Devis
                 </Button>
               </div>
             </div>
 
-            {/* Devis List Section */}
             <div id="devis-list-section">
               {loading ? (
                 <div className="flex items-center justify-center h-40">
@@ -962,7 +621,6 @@ export default function DevisPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Devis Grid */}
                   <div className="grid gap-4">
                     {paginatedDevis.map((d) => (
                       <Card
@@ -974,7 +632,6 @@ export default function DevisPage() {
                           <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                             <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
                             <span className="truncate">Devis {d.id.slice(0, 8)}</span>
-                            {/* ✅ Show PDF indicator */}
                             {d.hasInvoicePdf && (
                               <Badge variant="outline" className="ml-2 bg-green-50 border-green-200 text-green-700">
                                 <FileText className="h-3 w-3 mr-1" />
@@ -1005,19 +662,15 @@ export default function DevisPage() {
                           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
                             <div className="min-w-0 flex-1">
                               <p className="font-medium truncate">{d.clientName}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {d.clientEmail}
-                              </p>
+                              <p className="text-sm text-muted-foreground">{d.clientEmail}</p>
                               <p className="text-sm text-muted-foreground mt-1">
                                 {new Date(d.createdAt).toLocaleDateString("fr-FR")}
                               </p>
                             </div>
-
                             <div className="flex items-center gap-3">
                               <p className="font-bold text-lg shrink-0">
                                 {parseFloat(d.total).toFixed(2)} TND
                               </p>
-                              {/* ✅ Download Devis button */}
                               <Button
                                 size="icon"
                                 variant="outline"
@@ -1048,7 +701,6 @@ export default function DevisPage() {
                               </Button>
                             </div>
                           </div>
-
                           <div className="pt-2 border-t grid grid-cols-2 gap-2 text-xs">
                             {d.createdBy && (
                               <div>
@@ -1068,13 +720,11 @@ export default function DevisPage() {
                     ))}
                   </div>
 
-                  {/* Pagination Controls */}
                   {totalPages > 1 && (
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-6 border-t">
                       <div className="text-sm text-muted-foreground">
                         Page {currentPage} sur {totalPages}
                       </div>
-
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
@@ -1086,7 +736,6 @@ export default function DevisPage() {
                           <ChevronLeft className="h-4 w-4" />
                           Précédent
                         </Button>
-
                         <div className="flex items-center gap-1">
                           {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
                             const showPage =
@@ -1112,7 +761,6 @@ export default function DevisPage() {
                             )
                           })}
                         </div>
-
                         <Button
                           variant="outline"
                           size="sm"
@@ -1124,7 +772,6 @@ export default function DevisPage() {
                           <ChevronRight className="h-4 w-4" />
                         </Button>
                       </div>
-
                       <div className="text-sm text-muted-foreground">
                         Affichage {startIndex + 1} à {Math.min(endIndex, filteredDevis.length)} sur {filteredDevis.length}
                       </div>
@@ -1137,12 +784,10 @@ export default function DevisPage() {
         </SidebarInset>
       </div>
 
-      {/* DETAIL DIALOG */}
       <Dialog open={!!selectedDevis} onOpenChange={() => setSelectedDevis(null)}>
         <DialogContent className="max-w-2xl p-0 max-h-[90vh] flex flex-col gap-0">
           {selectedDevis && (
             <>
-              {/* Header */}
               <DialogHeader className="px-6 py-4 border-b">
                 <DialogTitle className="flex justify-between items-center gap-2 flex-wrap">
                   <span className="text-xl font-semibold">
@@ -1169,7 +814,6 @@ export default function DevisPage() {
                 </DialogTitle>
               </DialogHeader>
 
-              {/* BODY SCROLLABLE */}
               <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -1236,15 +880,19 @@ export default function DevisPage() {
 
                 <Separator />
 
+
+
                 <div className="space-y-3">
                   <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                     Produits ({selectedDevis.itemsCount})
                   </p>
-                  {selectedDevis.items && selectedDevis.items.length > 0 ? (
+
+                  {/* ✅ CHANGEMENT: Vérifier itemsCount au lieu de items.length */}
+                  {selectedDevis.itemsCount > 0 && selectedDevis.items ? (
                     selectedDevis.items.map((item: any, i: number) => (
                       <div
                         key={i}
-                        className="flex justify-between items-center py-2"
+                        className="flex justify-between items-center py-2 border-b last:border-b-0"
                       >
                         <span className="text-sm">
                           {item.product?.name || "Produit"}
@@ -1253,20 +901,22 @@ export default function DevisPage() {
                           </span>
                         </span>
                         <span className="font-semibold">
-                          {(
-                            parseFloat(item.price) * item.quantity
-                          ).toFixed(2)}{" "}
-                          TND
+                          {(parseFloat(item.price) * item.quantity).toFixed(2)} TND
                         </span>
                       </div>
                     ))
+                  ) : selectedDevis.itemsCount > 0 ? (
+                    // ✅ Si itemsCount > 0 mais items est vide, afficher un message de chargement
+                    <p className="text-sm text-muted-foreground italic">
+                      Chargement des produits...
+                    </p>
                   ) : (
+                    // Sinon aucun produit
                     <p className="text-sm text-muted-foreground">
                       Aucun produit
                     </p>
                   )}
                 </div>
-
                 <Separator />
 
                 <div className="flex justify-between items-center py-2">
@@ -1276,7 +926,31 @@ export default function DevisPage() {
                   </span>
                 </div>
 
-                {/* ✅ PDF Section */}
+                {selectedDevis.paymentPeriod && selectedDevis.paymentPeriod > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <p className="text-sm font-semibold text-blue-900 flex items-center gap-2">
+                        💳 Plan de paiement échelonné
+                      </p>
+                      <div className="bg-white p-3 rounded border border-blue-100">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm text-gray-700">Durée:</span>
+                          <span className="font-semibold text-gray-900">{selectedDevis.paymentPeriod} mois</span>
+                        </div>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm text-gray-700">Mensualité:</span>
+                          <span className="font-semibold text-blue-600">{selectedDevis.monthlyPayment?.toFixed(2) || (parseFloat(selectedDevis.total) / selectedDevis.paymentPeriod).toFixed(2)} TND/mois</span>
+                        </div>
+                        <div className="flex justify-between items-center border-t border-blue-100 pt-2">
+                          <span className="text-sm font-semibold text-gray-700">Total:</span>
+                          <span className="font-bold text-gray-900">{parseFloat(selectedDevis.total).toFixed(2)} TND</span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 {selectedDevis.hasInvoicePdf && (
                   <>
                     <Separator />
@@ -1343,27 +1017,13 @@ export default function DevisPage() {
                           </p>
                         </div>
                       )}
-
-                      {!selectedDevis.adminDescription && selectedDevis.adminStatus !== "EN_ATTENTE" && (
-                        <div className="text-xs text-blue-700 italic pt-2 border-t border-blue-200">
-                          Aucun commentaire fourni
-                        </div>
-                      )}
-
-                      {selectedDevis.adminStatus === "EN_ATTENTE" && (
-                        <div className="text-xs text-blue-700 italic pt-2 border-t border-blue-200">
-                          ⏳ En attente de réponse de l'administration...
-                        </div>
-                      )}
                     </div>
                   </>
                 )}
               </div>
 
-              {/* FOOTER FIXED */}
               <div className="px-6 py-4 border-t space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
-                  {/* ✅ Download Devis button */}
                   <Button
                     variant="outline"
                     className="w-full"
@@ -1390,7 +1050,6 @@ export default function DevisPage() {
                   </Button>
                 </div>
 
-                {/* ✅ Action buttons - Responsable can only modify if EN_ATTENTE */}
                 {selectedDevis.responsableStatus === "EN_ATTENTE" && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
                     <Button
@@ -1464,7 +1123,6 @@ export default function DevisPage() {
                   </div>
                 )}
 
-                {/* ✅ If APPROUVE = No action buttons for responsable */}
                 {selectedDevis.responsableStatus === "APPROUVE" && (
                   <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                     <p className="text-sm text-blue-700 font-semibold text-center">
@@ -1481,7 +1139,6 @@ export default function DevisPage() {
                   </div>
                 )}
 
-                {/* ✅ Delete button - only when EN_ATTENTE */}
                 <Button
                   variant="destructive"
                   className="w-full"

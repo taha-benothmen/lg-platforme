@@ -143,6 +143,206 @@ export async function GET(request: NextRequest) {
 
     console.log(`✅ Top products: ${topProductsData.length}`)
 
+    // ✨ 7. Get top agencies by DEVIS COUNT
+    const topAgenciesByDevisRaw = await prisma.devis.groupBy({
+      by: ["etablissementId"],
+      _count: {
+        id: true,
+      },
+      _sum: {
+        total: true,
+      },
+      where: {
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      orderBy: {
+        _count: {
+          id: "desc",
+        },
+      },
+      take: 5,
+    })
+
+    console.log(`🏢 Top agencies by devis count:`, topAgenciesByDevisRaw)
+
+    // Get agency names
+    const agencyIds = topAgenciesByDevisRaw.map(a => a.etablissementId)
+    const agenciesMap = await prisma.etablissement.findMany({
+      where: { id: { in: agencyIds } },
+      select: { id: true, name: true },
+    })
+
+    // Map to final format
+    const topAgenciesByDevis = topAgenciesByDevisRaw.map(agency => {
+      const agencyInfo = agenciesMap.find(a => a.id === agency.etablissementId)
+      const agencyRevenue = typeof agency._sum.total === 'string'
+        ? parseFloat(agency._sum.total)
+        : typeof agency._sum.total === 'number'
+        ? agency._sum.total
+        : (typeof agency._sum.total === 'object' && agency._sum.total !== null && 'toNumber' in agency._sum.total && typeof agency._sum.total.toNumber === 'function')
+        ? agency._sum.total.toNumber()
+        : 0
+
+      return {
+        id: agency.etablissementId,
+        name: agencyInfo?.name || `Agency ${agency.etablissementId}`,
+        devisCount: agency._count.id,
+        revenue: `${agencyRevenue.toFixed(2)} TND`,
+      }
+    })
+
+    console.log(`✅ Top agencies by devis: ${topAgenciesByDevis.length}`)
+
+    // ✨ 8. Get top agencies by REVENUE
+    const topAgenciesByRevenueRaw = await prisma.devis.groupBy({
+      by: ["etablissementId"],
+      _count: {
+        id: true,
+      },
+      _sum: {
+        total: true,
+      },
+      where: {
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      orderBy: {
+        _sum: {
+          total: "desc",
+        },
+      },
+      take: 5,
+    })
+
+    console.log(`💰 Top agencies by revenue:`, topAgenciesByRevenueRaw)
+
+    // Map to final format
+    const topAgenciesByRevenue = topAgenciesByRevenueRaw.map(agency => {
+      const agencyInfo = agenciesMap.find(a => a.id === agency.etablissementId)
+      const agencyRevenue = typeof agency._sum.total === 'string'
+        ? parseFloat(agency._sum.total)
+        : typeof agency._sum.total === 'number'
+        ? agency._sum.total
+        : (typeof agency._sum.total === 'object' && agency._sum.total !== null && 'toNumber' in agency._sum.total && typeof agency._sum.total.toNumber === 'function')
+        ? agency._sum.total.toNumber()
+        : 0
+
+      return {
+        id: agency.etablissementId,
+        name: agencyInfo?.name || `Agency ${agency.etablissementId}`,
+        devisCount: agency._count.id,
+        revenue: `${agencyRevenue.toFixed(2)} TND`,
+      }
+    })
+
+    console.log(`✅ Top agencies by revenue: ${topAgenciesByRevenue.length}`)
+
+    // ✨ 9. Get top responsables by DEVIS COUNT
+    const topResponsablesByDevisRaw = await prisma.devis.groupBy({
+      by: ["createdById"],
+      _count: {
+        id: true,
+      },
+      _sum: {
+        total: true,
+      },
+      where: {
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      orderBy: {
+        _count: {
+          id: "desc",
+        },
+      },
+      take: 5,
+    })
+
+    console.log(`👤 Top responsables by devis count:`, topResponsablesByDevisRaw)
+
+    // Get user names
+    const userIds = topResponsablesByDevisRaw.map(r => r.createdById)
+    const usersMap = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, firstName: true, lastName: true },
+    })
+
+    // Map to final format
+    const topResponsablesByDevis = topResponsablesByDevisRaw.map(responsable => {
+      const userInfo = usersMap.find(u => u.id === responsable.createdById)
+      const responsableRevenue = typeof responsable._sum.total === 'string'
+        ? parseFloat(responsable._sum.total)
+        : typeof responsable._sum.total === 'number'
+        ? responsable._sum.total
+        : (typeof responsable._sum.total === 'object' && responsable._sum.total !== null && 'toNumber' in responsable._sum.total && typeof responsable._sum.total.toNumber === 'function')
+        ? responsable._sum.total.toNumber()
+        : 0
+
+      return {
+        id: responsable.createdById,
+        firstName: userInfo?.firstName || "Unknown",
+        lastName: userInfo?.lastName || "User",
+        devisCount: responsable._count.id,
+        revenue: `${responsableRevenue.toFixed(2)} TND`,
+      }
+    })
+
+    console.log(`✅ Top responsables by devis: ${topResponsablesByDevis.length}`)
+
+    // ✨ 10. Get top responsables by REVENUE
+    const topResponsablesByRevenueRaw = await prisma.devis.groupBy({
+      by: ["createdById"],
+      _count: {
+        id: true,
+      },
+      _sum: {
+        total: true,
+      },
+      where: {
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      orderBy: {
+        _sum: {
+          total: "desc",
+        },
+      },
+      take: 5,
+    })
+
+    console.log(`💰 Top responsables by revenue:`, topResponsablesByRevenueRaw)
+
+    // Map to final format
+    const topResponsablesByRevenue = topResponsablesByRevenueRaw.map(responsable => {
+      const userInfo = usersMap.find(u => u.id === responsable.createdById)
+      const responsableRevenue = typeof responsable._sum.total === 'string'
+        ? parseFloat(responsable._sum.total)
+        : typeof responsable._sum.total === 'number'
+        ? responsable._sum.total
+        : (typeof responsable._sum.total === 'object' && responsable._sum.total !== null && 'toNumber' in responsable._sum.total && typeof responsable._sum.total.toNumber === 'function')
+        ? responsable._sum.total.toNumber()
+        : 0
+
+      return {
+        id: responsable.createdById,
+        firstName: userInfo?.firstName || "Unknown",
+        lastName: userInfo?.lastName || "User",
+        devisCount: responsable._count.id,
+        revenue: `${responsableRevenue.toFixed(2)} TND`,
+      }
+    })
+
+    console.log(`✅ Top responsables by revenue: ${topResponsablesByRevenue.length}`)
+
     const response = {
       stats: {
         products: productsCount,
@@ -158,6 +358,12 @@ export async function GET(request: NextRequest) {
       topProducts: topProductsData.length > 0 ? topProductsData : [
         { name: "Aucun produit", value: 0 },
       ],
+      // ✨ NEW FIELDS - Agencies
+      topAgenciesByDevis: topAgenciesByDevis,
+      topAgenciesByRevenue: topAgenciesByRevenue,
+      // ✨ NEW FIELDS - Responsables
+      topResponsablesByDevis: topResponsablesByDevis,
+      topResponsablesByRevenue: topResponsablesByRevenue,
     }
 
     console.log(`✅ Dashboard response:`, response)

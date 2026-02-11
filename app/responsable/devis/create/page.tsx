@@ -17,7 +17,8 @@ import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { menusByRole } from "@/lib/data/menus"
 import { notificationService } from "@/lib/notification.service"
-import { FileText, ShoppingCart, Download, Share2, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Info, X, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
+import { generateDevisPDFContent } from "@/lib/pdf-utils"
+import { FileText, ShoppingCart, Download, Share2, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Info, X, ChevronLeft, ChevronRight, Trash2, Calendar } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -118,6 +119,9 @@ export default function CreerDevisPage() {
     ville: "",
     notes: ""
   })
+
+  // ✅ Payment period state
+  const [paymentPeriod, setPaymentPeriod] = useState<number>(0)
 
   const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
     setAlert({ show: true, type, title, description })
@@ -312,6 +316,12 @@ export default function CreerDevisPage() {
     }))
   }
 
+  // Calculate monthly payment
+  const calculateMonthlyPayment = () => {
+    if (paymentPeriod <= 0) return 0
+    return calculateTotal() / paymentPeriod
+  }
+
   // Validate form
   const isFormValid = () => {
     return (
@@ -331,268 +341,67 @@ export default function CreerDevisPage() {
       showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
       return
     }
-
+  
     setIsDownloading(true)
-
+  
     try {
-      // Get all selected products with full details
-      const selectedProductsDetails = Array.from(selectedProducts.entries()).map(([id, quantity]) => {
-        const product = allProducts.find((p) => p.id === id)
-        return {
-          ...product,
-          quantity,
-          total: (product?.price || 0) * quantity
-        }
-      })
-
-      const grandTotal = calculateTotal()
-
-      // ✅ FIXED: Use already-loaded establishment info (no additional API calls)
-      const etabName = etablissementInfo?.name || "Non assigné"
-      const etabAddress = etablissementInfo?.address || ""
-      const etabPhone = etablissementInfo?.phone || ""
-      const etabEmail = etablissementInfo?.email || ""
-
-      // Create HTML content for PDF
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Devis</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              margin: 20px;
-              color: #333;
+      // Préparer les données du devis
+      const devisData = {
+        id: `draft-${new Date().getTime()}`,
+        clientName: `${clientInfo.prenom} ${clientInfo.nom}`,
+        clientEmail: clientInfo.email,
+        clientPhone: clientInfo.telephone,
+        clientAddr: clientInfo.adresse,
+        clientEnterprise: clientInfo.entreprise,
+        clientNotes: clientInfo.notes,
+        total: calculateTotal(),
+        paymentPeriod: paymentPeriod > 0 ? paymentPeriod : null,
+        monthlyPayment: paymentPeriod > 0 ? calculateMonthlyPayment() : null,
+        createdAt: new Date().toISOString(),
+        updatedAt: null,
+        items: Array.from(selectedProducts.entries()).map(([id, quantity]) => {
+          const product = allProducts.find((p) => p.id === id)
+          return {
+            id: product?.id,
+            quantity,
+            price: product?.price?.toString() || "0",
+            product: {
+              id: product?.id,
+              name: product?.name,
+              description: product?.description,
             }
-            .header {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 30px;
-              border-bottom: 2px solid #007bff;
-              padding-bottom: 20px;
-            }
-            .header-left h1 {
-              margin: 0;
-              color: #007bff;
-              font-size: 24px;
-            }
-            .header-right {
-              text-align: right;
-            }
-            .section {
-              margin-bottom: 30px;
-            }
-            .section-title {
-              font-size: 14px;
-              font-weight: bold;
-              color: #007bff;
-              text-transform: uppercase;
-              margin-bottom: 10px;
-              border-bottom: 1px solid #ddd;
-              padding-bottom: 5px;
-            }
-            .info-table {
-              width: 100%;
-              margin-bottom: 15px;
-              font-size: 12px;
-            }
-            .info-table td {
-              padding: 5px 0;
-            }
-            .info-table td.label {
-              font-weight: bold;
-              width: 150px;
-            }
-            .products-table {
-              width: 100%;
-              border-collapse: collapse;
-              font-size: 12px;
-              margin: 15px 0;
-            }
-            .products-table th {
-              background-color: #007bff;
-              color: white;
-              padding: 10px;
-              text-align: left;
-              font-weight: bold;
-            }
-            .products-table td {
-              padding: 10px;
-              border-bottom: 1px solid #ddd;
-            }
-            .products-table tr:nth-child(even) {
-              background-color: #f9f9f9;
-            }
-            .text-right {
-              text-align: right;
-            }
-            .total-section {
-              text-align: right;
-              margin-top: 20px;
-              padding-top: 20px;
-              border-top: 2px solid #007bff;
-            }
-            .total-row {
-              font-size: 14px;
-              font-weight: bold;
-              color: #007bff;
-              margin: 10px 0;
-            }
-            .notes-section {
-              margin-top: 30px;
-              padding: 15px;
-              background-color: #f9f9f9;
-              border-left: 4px solid #007bff;
-              font-size: 11px;
-            }
-            .footer {
-              margin-top: 40px;
-              text-align: center;
-              font-size: 10px;
-              color: #999;
-              border-top: 1px solid #ddd;
-              padding-top: 20px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="header-left">
-              <h1>DEVIS</h1>
-              <p>Généré le ${new Date().toLocaleDateString('fr-FR')}</p>
-            </div>
-            <div class="header-right">
-              <p><strong>Date:</strong> ${new Date().toLocaleDateString('fr-FR')}</p>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">Établissement</div>
-            <table class="info-table">
-              <tr>
-                <td class="label">Nom:</td>
-                <td>${etabName}</td>
-              </tr>
-              ${etabAddress ? `
-              <tr>
-                <td class="label">Adresse:</td>
-                <td>${etabAddress}</td>
-              </tr>
-              ` : ''}
-              ${etabPhone ? `
-              <tr>
-                <td class="label">Téléphone:</td>
-                <td>${etabPhone}</td>
-              </tr>
-              ` : ''}
-              ${etabEmail ? `
-              <tr>
-                <td class="label">Email:</td>
-                <td>${etabEmail}</td>
-              </tr>
-              ` : ''}
-            </table>
-          </div>
-
-          ${userInfo ? `
-          <div class="section">
-            <div class="section-title">Responsable</div>
-            <table class="info-table">
-              <tr>
-                <td class="label">Nom:</td>
-                <td>${userInfo.firstName} ${userInfo.lastName || ''}</td>
-              </tr>
-              <tr>
-                <td class="label">Email:</td>
-                <td>${userInfo.email || '-'}</td>
-              </tr>
-            </table>
-          </div>
-          ` : ''}
-
-          <div class="section">
-            <div class="section-title">Informations du client</div>
-            <table class="info-table">
-              <tr>
-                <td class="label">Nom:</td>
-                <td>${clientInfo.prenom} ${clientInfo.nom}</td>
-              </tr>
-              <tr>
-                <td class="label">Entreprise:</td>
-                <td>${clientInfo.entreprise || '-'}</td>
-              </tr>
-              <tr>
-                <td class="label">Email:</td>
-                <td>${clientInfo.email}</td>
-              </tr>
-              <tr>
-                <td class="label">Téléphone:</td>
-                <td>${clientInfo.telephone}</td>
-              </tr>
-              <tr>
-                <td class="label">Adresse:</td>
-                <td>${clientInfo.adresse}, ${clientInfo.codePostal} ${clientInfo.ville}</td>
-              </tr>
-            </table>
-          </div>
-
-          <div class="section">
-            <div class="section-title">Produits</div>
-            <table class="products-table">
-              <thead>
-                <tr>
-                  <th>Produit</th>
-                  <th style="width: 100px;">Quantité</th>
-                  <th style="width: 100px;">Prix Unitaire</th>
-                  <th class="text-right" style="width: 100px;">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${selectedProductsDetails.map(product => `
-                <tr>
-                  <td>${product.name}</td>
-                  <td>${product.quantity}</td>
-                  <td class="text-right">${product.price?.toFixed(2) || 0} ${product.currency}</td>
-                  <td class="text-right">${product.total.toFixed(2)} ${product.currency}</td>
-                </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-
-          <div class="total-section">
-            <div class="total-row">
-              TOTAL: ${grandTotal.toFixed(2)} TND
-            </div>
-          </div>
-
-          ${clientInfo.notes ? `
-          <div class="notes-section">
-            <strong>Remarques:</strong><br>
-            ${clientInfo.notes}
-          </div>
-          ` : ''}
-
-          <div class="footer">
-            <p>Ce devis a été généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}</p>
-          </div>
-        </body>
-        </html>
-      `
-
-      // Create a blob and download
-      const blob = new Blob([htmlContent], { type: 'text/html' })
-      const link = document.createElement('a')
+          }
+        }),
+        itemsCount: Array.from(selectedProducts.entries()).length,
+        createdBy: userInfo ? {
+          id: userInfo.id,
+          firstName: userInfo.firstName || "",
+          lastName: userInfo.lastName || "",
+          email: userInfo.email || "",
+        } : null,
+        etablissement: etablissementInfo ? {
+          id: etablissementInfo.id,
+          name: etablissementInfo.name,
+          address: etablissementInfo.address,
+          phone: etablissementInfo.phone,
+          email: etablissementInfo.email,
+        } : null,
+      }
+  
+      // Générer le contenu HTML
+      const htmlContent = generateDevisPDFContent(devisData)  
+  
+      // Télécharger
+      const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" })
       const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
       link.href = url
       link.download = `Devis_${clientInfo.nom}_${clientInfo.prenom}_${new Date().getTime()}.html`
       document.body.appendChild(link)
       link.click()
-      window.URL.revokeObjectURL(url)
       document.body.removeChild(link)
-
+      window.URL.revokeObjectURL(url)
+  
       showAlert("success", "Téléchargement réussi", "Le devis a été téléchargé avec succès!")
     } catch (error) {
       console.error('Error downloading PDF:', error)
@@ -601,7 +410,6 @@ export default function CreerDevisPage() {
       setIsDownloading(false)
     }
   }
-
   // Share quote
   const handleShareQuote = () => {
     if (!isFormValid()) {
@@ -609,7 +417,7 @@ export default function CreerDevisPage() {
       return
     }
 
-    const shareText = `Devis pour ${clientInfo.prenom} ${clientInfo.nom}\nTotal: ${calculateTotal().toFixed(2)} TND\nNombre d'articles: ${getTotalItems()}`
+    const shareText = `Devis pour ${clientInfo.prenom} ${clientInfo.nom}\nTotal: ${calculateTotal().toFixed(2)} TND\nNombre d'articles: ${getTotalItems()}${paymentPeriod > 0 ? `\nPlan de paiement: ${paymentPeriod} mois à ${calculateMonthlyPayment().toFixed(2)} TND/mois` : ''}`
 
     if (navigator.share) {
       navigator.share({
@@ -645,6 +453,8 @@ export default function CreerDevisPage() {
     const quoteData = {
       userId: userId,
       client: clientInfo,
+      paymentPeriod: paymentPeriod > 0 ? paymentPeriod : null,
+      monthlyPayment: paymentPeriod > 0 ? calculateMonthlyPayment() : null,
       products: Array.from(selectedProducts.entries()).map(([id, quantity]) => {
         const product = allProducts.find((p) => p.id === id)
         return {
@@ -1134,6 +944,36 @@ export default function CreerDevisPage() {
                         rows={3}
                       />
                     </div>
+
+                    {/* ✅ Payment Period */}
+                    <div className="pt-4 border-t">
+                      <Label htmlFor="paymentPeriod" className="flex items-center gap-2 mb-2">
+                        <Calendar className="h-4 w-4" />
+                        Plan de paiement échelonné (optionnel)
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="paymentPeriod"
+                          type="number"
+                          value={paymentPeriod || ""}
+                          onChange={(e) => setPaymentPeriod(parseInt(e.target.value) || 0)}
+                          placeholder="Ex: 12, 24, 36 mois"
+                          min="0"
+                          className="flex-1"
+                        />
+                        <span className="text-sm text-muted-foreground self-center">mois</span>
+                      </div>
+                      {paymentPeriod > 0 && (
+                        <div className="mt-3 p-3 bg-primary/10 rounded-lg">
+                          <p className="text-sm font-semibold text-primary">
+                            Mensualité: {calculateMonthlyPayment().toFixed(2)} TND
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Total: {calculateTotal().toFixed(2)} TND sur {paymentPeriod} mois
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -1168,6 +1008,12 @@ export default function CreerDevisPage() {
                           <span>Total</span>
                           <span>{calculateTotal().toFixed(2)} TND</span>
                         </div>
+                        {paymentPeriod > 0 && (
+                          <div className="flex justify-between font-semibold text-primary text-sm">
+                            <span>Mensualité</span>
+                            <span>{calculateMonthlyPayment().toFixed(2)} TND</span>
+                          </div>
+                        )}
                       </>
                     )}
 

@@ -9,7 +9,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { menusByRole } from "@/lib/data/menus"
 import { useState, useEffect } from "react"
-import { Download, Loader2 } from "lucide-react"
+import { Download, Loader2, Building2, User } from "lucide-react"
 
 interface DashboardData {
   stats: {
@@ -24,6 +24,32 @@ interface DashboardData {
   topProducts: Array<{
     name: string
     value: number
+  }>
+  topAgenciesByDevis?: Array<{
+    id: string
+    name: string
+    devisCount: number
+    revenue: string
+  }>
+  topAgenciesByRevenue?: Array<{
+    id: string
+    name: string
+    devisCount: number
+    revenue: string
+  }>
+  topResponsablesByDevis?: Array<{
+    id: string
+    firstName: string
+    lastName: string
+    devisCount: number
+    revenue: string
+  }>
+  topResponsablesByRevenue?: Array<{
+    id: string
+    firstName: string
+    lastName: string
+    devisCount: number
+    revenue: string
   }>
 }
 
@@ -46,6 +72,38 @@ const transformTopProductsData = (topProducts: Array<{ name: string; value: numb
     fill: colors[index % colors.length],
   }))
 }
+
+// Component for ranking cards (reusable)
+const RankingCard = ({
+  rank,
+  name,
+  subtitle,
+  revenue,
+  bgColor,
+  badgeColor,
+}: {
+  rank: number
+  name: string
+  subtitle: string
+  revenue: string
+  bgColor: string
+  badgeColor: string
+}) => (
+  <div className={`flex items-center justify-between p-3 ${bgColor} rounded-lg border`}>
+    <div className="flex items-center gap-3 flex-1">
+      <div className={`flex items-center justify-center w-8 h-8 rounded-full ${badgeColor} text-white text-sm font-bold`}>
+        {rank}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-gray-900 truncate">{name}</p>
+        <p className="text-sm text-gray-600">{subtitle}</p>
+      </div>
+    </div>
+    <div className="text-right ml-4">
+      <p className={`font-semibold ${badgeColor.replace('bg-', 'text-')}`}>{revenue}</p>
+    </div>
+  </div>
+)
 
 export default function Page() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
@@ -89,6 +147,10 @@ export default function Page() {
         stats: { products: 0, devis: 0, etablissements: 0, revenue: "0 TND" },
         chart: { devis: [] },
         topProducts: [],
+        topAgenciesByDevis: [],
+        topAgenciesByRevenue: [],
+        topResponsablesByDevis: [],
+        topResponsablesByRevenue: [],
       })
     } finally {
       setLoading(false)
@@ -116,9 +178,6 @@ export default function Page() {
       }
 
       const blob = await response.blob()
-      console.log("Blob type:", blob.type)
-      console.log("Blob size:", blob.size)
-      
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -164,137 +223,269 @@ export default function Page() {
         "--sidebar-width-mobile": "calc(var(--spacing) * 72)",
       } as React.CSSProperties}
     >
-      <AppSidebar menu={menusByRole.admin} />
+      {/* ✅ Sidebar fixe à gauche */}
+      <div className="flex h-screen w-full">
+        <div className="flex-shrink-0 h-full">
+          <AppSidebar menu={menusByRole.admin} />
+        </div>
 
-      <SidebarInset>
-        <SiteHeader />
+        {/* ✅ Contenu scrollable à droite */}
+        <div className="flex-1 flex flex-col h-screen overflow-hidden">
+          {/* Header fixe en haut du contenu */}
+          <div className="flex-shrink-0">
+            <SiteHeader />
+          </div>
 
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-4 lg:px-6 py-6">
-            <div className="max-w-7xl mx-auto space-y-6">
+          {/* Contenu scrollable */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-4 lg:px-6 py-6">
+              <div className="max-w-7xl mx-auto space-y-6">
 
-              {/* Error Alert */}
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <p className="text-red-800 font-semibold">❌ Erreur</p>
-                  <p className="text-red-700 text-sm mt-1">{error}</p>
-                </div>
-              )}
-
-              {/* Header with Controls */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-3xl font-bold">Tableau de bord</h1>
-                  <p className="text-muted-foreground mt-1">Vue d'ensemble des statistiques</p>
-                </div>
-
-                {/* Date Range + Export */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="flex flex-col">
-                    <label className="text-xs font-medium text-muted-foreground mb-1">Début</label>
-                    <input
-                      type="date"
-                      value={dateRange.startDate}
-                      onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
-                      className="px-3 py-2 border rounded-md text-sm"
-                    />
+                {/* Error Alert */}
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-800 font-semibold">❌ Erreur</p>
+                    <p className="text-red-700 text-sm mt-1">{error}</p>
                   </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs font-medium text-muted-foreground mb-1">Fin</label>
-                    <input
-                      type="date"
-                      value={dateRange.endDate}
-                      onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
-                      className="px-3 py-2 border rounded-md text-sm"
-                    />
+                )}
+
+                {/* Header with Controls */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <h1 className="text-3xl font-bold">Tableau de bord</h1>
+                    <p className="text-muted-foreground mt-1">Vue d'ensemble des statistiques</p>
                   </div>
-                  <div className="flex items-end">
-                    <Button
-                      onClick={downloadXLS}
-                      disabled={exporting || !dashboardData}
-                      className="gap-2 bg-green-600 hover:bg-green-700"
-                    >
-                      {exporting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
-                      {exporting ? "Export..." : "CSV"}
-                    </Button>
+
+                  {/* Date Range + Export */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-muted-foreground mb-1">Début</label>
+                      <input
+                        type="date"
+                        value={dateRange.startDate}
+                        onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+                        className="px-3 py-2 border rounded-md text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-muted-foreground mb-1">Fin</label>
+                      <input
+                        type="date"
+                        value={dateRange.endDate}
+                        onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+                        className="px-3 py-2 border rounded-md text-sm"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        onClick={downloadXLS}
+                        disabled={exporting || !dashboardData}
+                        className="gap-2 bg-green-600 hover:bg-green-700"
+                      >
+                        {exporting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                        {exporting ? "Export..." : "CSV"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
+
+                {/* KPI Cards */}
+                {dashboardData && (
+                  <SectionCardsRadial
+                    cards={[
+                      { title: "Produits", value: dashboardData.stats.products },
+                      { title: "Devis", value: dashboardData.stats.devis },
+                      { title: "Établissements", value: dashboardData.stats.etablissements },
+                      { title: "Chiffre d'affaires", value: dashboardData.stats.revenue, isRevenue: true },
+                    ]}
+                  />
+                )}
+
+                {/* Charts Grid - 3 Columns */}
+                {dashboardData && (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                    {/* Evolution des devis */}
+                    <div className="lg:col-span-1 border rounded-lg p-4 bg-white">
+                      <h2 className="text-lg font-semibold mb-4">Évolution des devis</h2>
+                      <div className="h-80">
+                        {dashboardData.chart.devis.length > 0 ? (
+                          <ChartDevisCard data={dashboardData.chart.devis} />
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-muted-foreground">
+                            Pas de données
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Chiffre d'affaires */}
+                    <div className="lg:col-span-1 border rounded-lg p-4 bg-white">
+                      <h2 className="text-lg font-semibold mb-4">Chiffre d'affaire</h2>
+                      <div className="h-80">
+                        {dashboardData.chart.devis.length > 0 ? (
+                          <ChartDevisCard data={dashboardData.chart.devis} />
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-muted-foreground">
+                            Pas de données
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Top Produits */}
+                    <div className="lg:col-span-1 border rounded-lg p-4 bg-white">
+                      <h2 className="text-lg font-semibold mb-4">Top Produits</h2>
+                      <div className="h-80">
+                        {dashboardData.topProducts.length > 0 && dashboardData.topProducts[0].name !== "Aucun produit" ? (
+                          <ChartProductsDonut
+                            data={transformTopProductsData(dashboardData.topProducts)}
+                            label="Quantité"
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-muted-foreground">
+                            Pas de données
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* TOP AGENCIES SECTION - 2 columns */}
+                {dashboardData && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                    {/* Top Agencies by Devis Count */}
+                    <div className="border rounded-lg p-6 bg-white">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Building2 className="h-5 w-5 text-blue-600" />
+                        <h2 className="text-lg font-semibold">Top Agences (par Devis)</h2>
+                      </div>
+                      <div className="space-y-3">
+                        {dashboardData.topAgenciesByDevis && dashboardData.topAgenciesByDevis.length > 0 ? (
+                          dashboardData.topAgenciesByDevis.map((agency, index) => (
+                            <RankingCard
+                              key={agency.id}
+                              rank={index + 1}
+                              name={agency.name}
+                              subtitle={`${agency.devisCount} devis`}
+                              revenue={agency.revenue}
+                              bgColor="bg-blue-50 border-blue-200"
+                              badgeColor="bg-blue-600"
+                            />
+                          ))
+                        ) : (
+                          <div className="flex items-center justify-center h-32 text-muted-foreground">
+                            Pas de données
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Top Agencies by Revenue */}
+                    <div className="border rounded-lg p-6 bg-white">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Building2 className="h-5 w-5 text-amber-600" />
+                        <h2 className="text-lg font-semibold">Top Agences (par Chiffre d'affaires)</h2>
+                      </div>
+                      <div className="space-y-3">
+                        {dashboardData.topAgenciesByRevenue && dashboardData.topAgenciesByRevenue.length > 0 ? (
+                          dashboardData.topAgenciesByRevenue.map((agency, index) => (
+                            <RankingCard
+                              key={agency.id}
+                              rank={index + 1}
+                              name={agency.name}
+                              subtitle={`${agency.devisCount} devis`}
+                              revenue={agency.revenue}
+                              bgColor="bg-amber-50 border-amber-200"
+                              badgeColor="bg-amber-600"
+                            />
+                          ))
+                        ) : (
+                          <div className="flex items-center justify-center h-32 text-muted-foreground">
+                            Pas de données
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* TOP RESPONSABLES SECTION - 2 columns */}
+                {dashboardData && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                    {/* Top Responsables by Devis Count */}
+                    <div className="border rounded-lg p-6 bg-white">
+                      <div className="flex items-center gap-2 mb-4">
+                        <User className="h-5 w-5 text-green-600" />
+                        <h2 className="text-lg font-semibold">Top Responsables (par Devis)</h2>
+                      </div>
+                      <div className="space-y-3">
+                        {dashboardData.topResponsablesByDevis && dashboardData.topResponsablesByDevis.length > 0 ? (
+                          dashboardData.topResponsablesByDevis.map((responsable, index) => (
+                            <RankingCard
+                              key={responsable.id}
+                              rank={index + 1}
+                              name={`${responsable.firstName} ${responsable.lastName}`}
+                              subtitle={`${responsable.devisCount} devis`}
+                              revenue={responsable.revenue}
+                              bgColor="bg-green-50 border-green-200"
+                              badgeColor="bg-green-600"
+                            />
+                          ))
+                        ) : (
+                          <div className="flex items-center justify-center h-32 text-muted-foreground">
+                            Pas de données
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Top Responsables by Revenue */}
+                    <div className="border rounded-lg p-6 bg-white">
+                      <div className="flex items-center gap-2 mb-4">
+                        <User className="h-5 w-5 text-emerald-600" />
+                        <h2 className="text-lg font-semibold">Top Responsables (par Chiffre d'affaires)</h2>
+                      </div>
+                      <div className="space-y-3">
+                        {dashboardData.topResponsablesByRevenue && dashboardData.topResponsablesByRevenue.length > 0 ? (
+                          dashboardData.topResponsablesByRevenue.map((responsable, index) => (
+                            <RankingCard
+                              key={responsable.id}
+                              rank={index + 1}
+                              name={`${responsable.firstName} ${responsable.lastName}`}
+                              subtitle={`${responsable.devisCount} devis`}
+                              revenue={responsable.revenue}
+                              bgColor="bg-emerald-50 border-emerald-200"
+                              badgeColor="bg-emerald-600"
+                            />
+                          ))
+                        ) : (
+                          <div className="flex items-center justify-center h-32 text-muted-foreground">
+                            Pas de données
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* Extra space for scrolling */}
+                <div className="h-8" />
               </div>
-
-              {/* KPI Cards */}
-              {dashboardData && (
-                <SectionCardsRadial
-                  cards={[
-                    { title: "Produits", value: dashboardData.stats.products },
-                    { title: "Devis", value: dashboardData.stats.devis },
-                    { title: "Établissements", value: dashboardData.stats.etablissements },
-                    { title: "Chiffre d'affaires", value: dashboardData.stats.revenue, isRevenue: true },
-                  ]}
-                />
-              )}
-
-              {/* Charts Grid - 3 Columns */}
-              {dashboardData && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-                  {/* Evolution des devis */}
-                  <div className="lg:col-span-1 border rounded-lg p-4 bg-white">
-                    <h2 className="text-lg font-semibold mb-4">Évolution des devis</h2>
-                    <div className="h-80">
-                      {dashboardData.chart.devis.length > 0 ? (
-                        <ChartDevisCard data={dashboardData.chart.devis} />
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                          Pas de données
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Chiffre d'affaires */}
-                  <div className="lg:col-span-1 border rounded-lg p-4 bg-white">
-                    <h2 className="text-lg font-semibold mb-4">Chiffre d'affaire</h2>
-                    <div className="h-80">
-                      {dashboardData.chart.devis.length > 0 ? (
-                        <ChartDevisCard data={dashboardData.chart.devis} />
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                          Pas de données
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Top Produits - ✅ FIXED */}
-                  <div className="lg:col-span-1 border rounded-lg p-4 bg-white">
-                    <h2 className="text-lg font-semibold mb-4">Top Produits</h2>
-                    <div className="h-80">
-                      {dashboardData.topProducts.length > 0 && dashboardData.topProducts[0].name !== "Aucun produit" ? (
-                        <ChartProductsDonut
-                          data={transformTopProductsData(dashboardData.topProducts)}
-                          label="Quantité"
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                          Pas de données
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                </div>
-              )}
-
-              {/* Extra space for scrolling */}
-              <div className="h-8" />
             </div>
           </div>
         </div>
-      </SidebarInset>
+      </div>
     </SidebarProvider>
   )
 }

@@ -70,8 +70,8 @@ async function getAllChildEstablishmentIds(parentId: string): Promise<string[]> 
   return allIds
 }
 
-// Format devis response
-function formatDevisResponse(devis: any, includeItems: boolean = false, includePdf: boolean = false) {
+// Format devis response - ✅ ITEMS TOUJOURS INCLUS
+function formatDevisResponse(devis: any, includePdf: boolean = false) {
   const response: any = {
     id: devis.id,
     clientName: devis.clientName,
@@ -119,8 +119,20 @@ function formatDevisResponse(devis: any, includeItems: boolean = false, includeP
     updatedAt: devis.updatedAt,
   }
 
-  if (includeItems && devis.items) {
-    response.items = devis.items
+  // ✅ TOUJOURS retourner les items formatés
+  if (devis.items && devis.items.length > 0) {
+    response.items = devis.items.map((item: any) => ({
+      id: item.id,
+      quantity: item.quantity,
+      price: item.price.toString(),
+      product: item.product ? {
+        id: item.product.id,
+        name: item.product.name,
+        description: item.product.description,
+      } : null,
+    }))
+  } else {
+    response.items = []
   }
 
   // Include PDF as base64 if requested
@@ -306,7 +318,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          data: formatDevisResponse(devis, true, includePdf),
+          data: formatDevisResponse(devis, includePdf),
         },
         { status: 200 }
       )
@@ -336,7 +348,7 @@ export async function GET(request: NextRequest) {
     const devis = await prisma.devis.findMany({
       where: whereClause,
       include: {
-        items: { include: { product: { select: { id: true, name: true, price: true } } } },
+        items: { include: { product: { select: { id: true, name: true, price: true, description: true } } } },
         createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         validatedBy: { select: { id: true, firstName: true, lastName: true } },
         adminValidatedBy: { select: { id: true, firstName: true, lastName: true } },
@@ -478,7 +490,7 @@ export async function POST(request: NextRequest) {
         },
       },
       include: {
-        items: { include: { product: { select: { id: true, name: true, price: true } } } },
+        items: { include: { product: { select: { id: true, name: true, price: true, description: true } } } },
         createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         etablissement: { select: { id: true, name: true } },
       },
@@ -488,7 +500,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         message: "Devis created successfully",
-        data: formatDevisResponse(devis, true),
+        data: formatDevisResponse(devis),
       },
       { status: 201 }
     )
@@ -725,7 +737,7 @@ export async function PUT(request: NextRequest) {
       where: { id: devisId },
       data: updateData,
       include: {
-        items: { include: { product: { select: { id: true, name: true, price: true } } } },
+        items: { include: { product: { select: { id: true, name: true, price: true, description: true } } } },
         createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
         validatedBy: { select: { id: true, firstName: true, lastName: true } },
         adminValidatedBy: { select: { id: true, firstName: true, lastName: true } },
@@ -743,7 +755,7 @@ export async function PUT(request: NextRequest) {
       {
         success: true,
         message: "Devis updated successfully",
-        data: formatDevisResponse(updatedDevis, true),
+        data: formatDevisResponse(updatedDevis),
       },
       { status: 200 }
     )

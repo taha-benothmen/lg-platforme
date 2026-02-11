@@ -528,12 +528,35 @@ export default function ProduitsPage() {
 
                     <Separator />
 
-                    <div className="space-y-2">
-                      <h3 className="font-semibold">Informations supplémentaires</h3>
-                      <div className="text-sm space-y-1">
-                        <p><span className="text-muted-foreground">ID:</span> {selectedProduct.id}</p>
-                        <p><span className="text-muted-foreground">Statut:</span> {selectedProduct.isActive ? "Actif" : "Inactif"}</p>
-                        <p><span className="text-muted-foreground">Date de création:</span> {new Date(selectedProduct.createdAt).toLocaleDateString()}</p>
+                    <div className="space-y-3">
+                      <h3 className="font-semibold">Options de paiement échelonné</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left p-2 font-semibold">Durée</th>
+                              <th className="text-right p-2 font-semibold">Mensualité</th>
+                              <th className="text-right p-2 font-semibold">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="border-b hover:bg-muted/50">
+                              <td className="p-2">12 mois</td>
+                              <td className="text-right p-2">{(selectedProduct.price / 12).toFixed(2)} TND</td>
+                              <td className="text-right p-2 font-semibold">{selectedProduct.price.toFixed(2)} TND</td>
+                            </tr>
+                            <tr className="border-b hover:bg-muted/50">
+                              <td className="p-2">24 mois</td>
+                              <td className="text-right p-2">{(selectedProduct.price / 24).toFixed(2)} TND</td>
+                              <td className="text-right p-2 font-semibold">{selectedProduct.price.toFixed(2)} TND</td>
+                            </tr>
+                            <tr className="hover:bg-muted/50">
+                              <td className="p-2">36 mois</td>
+                              <td className="text-right p-2">{(selectedProduct.price / 36).toFixed(2)} TND</td>
+                              <td className="text-right p-2 font-semibold">{selectedProduct.price.toFixed(2)} TND</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </div>

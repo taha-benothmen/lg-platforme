@@ -32,6 +32,9 @@ function formatDevisResponse(devis: any) {
     total: devis.total.toString(),
     status: devis.status,
     itemsCount: devis.items?.length || 0,
+    // ✅ ADD PAYMENT PLAN FIELDS
+    paymentPeriod: devis.paymentPeriod || null,
+    monthlyPayment: devis.monthlyPayment ? devis.monthlyPayment.toString() : null,
     createdBy: devis.createdBy
       ? {
           id: devis.createdBy.id,
