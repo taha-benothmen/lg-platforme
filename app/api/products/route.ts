@@ -1,26 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-// ✅ OPTIMIZED: GET with pagination
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get("page") || "1")
     const limit = parseInt(searchParams.get("limit") || "12")
     const categoryId = searchParams.get("categoryId")
-
-    console.log(`📦 API Request: Page ${page}, Limit ${limit}, Category: ${categoryId || "all"}`)
-
-    // Calculate skip
     const skip = (page - 1) * limit
-
-    // Build where clause
     const where: any = {}
     if (categoryId && categoryId !== "all") {
       where.categoryId = parseInt(categoryId)
     }
 
-    // ✅ OPTIMIZED: Only fetch products for current page
     const products = await prisma.product.findMany({
       where,
       include: {
@@ -33,20 +25,15 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Get total count for pagination
     const total = await prisma.product.count({ where })
 
-    // ✅ Convert images for the page
     const productsWithImages = products.map((product: any, index: number) => {
       let imageDataUrl = null
 
       if (product.image) {
         try {
-          // Prisma renvoie les Bytes comme Buffer
           if (Buffer.isBuffer(product.image)) {
             const base64String = product.image.toString('base64')
-
-            // Si imageType est null, essayer de le détecter
             let mimeType = product.imageType
             if (!mimeType && product.image.length >= 4) {
               const header = product.image.slice(0, 4).toString('hex')
@@ -70,7 +57,7 @@ export async function GET(request: NextRequest) {
         description: product.description,
         price: parseFloat(product.price.toString()),
         currency: product.currency,
-        stock: product.stock, // ✅ Enum: "DISPONIBLE" | "HORS_STOCK"
+        stock: product.stock, 
         image: imageDataUrl,
         imageType: product.imageType,
         isActive: product.isActive,
@@ -80,9 +67,6 @@ export async function GET(request: NextRequest) {
         updatedAt: product.updatedAt,
       }
     })
-
-    console.log(`✅ Loaded ${products.length} products (Page ${page}/${Math.ceil(total / limit)}, Total: ${total})`)
-
     return NextResponse.json({
       data: productsWithImages,
       pagination: {
@@ -93,7 +77,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("❌ API Error:", error)
+    console.error("API Error:", error)
     return NextResponse.json(
       { error: "Failed to fetch products" },
       { status: 500 }
@@ -101,7 +85,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Créer un nouveau produit avec upload d'image
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -114,7 +97,6 @@ export async function POST(request: NextRequest) {
     const categoryId = formData.get("categoryId") as string
     const imageFile = formData.get("image") as File | null
 
-    // Validation
     if (!name || !price || !stock) {
       return NextResponse.json(
         { error: "Name, price, and stock are required" },
@@ -122,7 +104,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ✅ Validation de l'enum stock
     if (stock !== "DISPONIBLE" && stock !== "HORS_STOCK") {
       return NextResponse.json(
         { error: "Stock must be DISPONIBLE or HORS_STOCK" },
@@ -133,15 +114,13 @@ export async function POST(request: NextRequest) {
     let imageBuffer: Buffer | null = null
     let imageType: string | null = null
 
-    // Convertir l'image en Buffer (Bytes)
     if (imageFile && imageFile.size > 0) {
       try {
         const arrayBuffer = await imageFile.arrayBuffer()
         imageBuffer = Buffer.from(arrayBuffer)
-        imageType = imageFile.type // ex: "image/png", "image/jpeg"
-        console.log(`✅ Image convertie: ${imageFile.name} (${imageType}, ${imageBuffer.length} bytes)`)
+        imageType = imageFile.type 
       } catch (uploadError) {
-        console.error("❌ Erreur lors de la conversion:", uploadError)
+        console.error("Erreur lors de la conversion:", uploadError)
         return NextResponse.json(
           { error: "Failed to process image" },
           { status: 400 }
@@ -149,7 +128,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Gérer la catégorie
     let finalCategoryId = categoryId ? parseInt(categoryId) : null
 
     if (!finalCategoryId) {
@@ -159,7 +137,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier que la catégorie existe
     const categoryExists = await prisma.category.findUnique({
       where: { id: finalCategoryId },
     })
@@ -171,14 +148,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ✅ Créer le produit avec stock comme enum (PAS de parseInt)
     const product = await prisma.product.create({
       data: {
         name,
         description: description || null,
         price: parseFloat(price),
         currency: currency || "TND",
-        stock: stock as "DISPONIBLE" | "HORS_STOCK", // ✅ Cast explicite de l'enum
+        stock: stock as "DISPONIBLE" | "HORS_STOCK", 
         image: imageBuffer,
         imageType: imageType,
         categoryId: finalCategoryId,
@@ -187,8 +163,6 @@ export async function POST(request: NextRequest) {
         category: true,
       },
     })
-
-    // Convertir pour la réponse
     let imageDataUrl = null
     if (product.image && product.imageType) {
       try {
@@ -207,7 +181,7 @@ export async function POST(request: NextRequest) {
       description: product.description,
       price: parseFloat(product.price.toString()),
       currency: product.currency,
-      stock: product.stock, // ✅ Enum
+      stock: product.stock, 
       image: imageDataUrl,
       imageType: product.imageType,
       isActive: product.isActive,
@@ -217,7 +191,6 @@ export async function POST(request: NextRequest) {
       updatedAt: product.updatedAt,
     }
 
-    console.log(`✅ Produit créé: ${product.name}`)
     return NextResponse.json(productWithImage, { status: 201 })
   } catch (error) {
     console.error("Error creating product:", error)

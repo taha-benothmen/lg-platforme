@@ -79,7 +79,6 @@ export default function ProduitsPage() {
   const [alertMessage, setAlertMessage] = useState<AlertMessage | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({ isOpen: false, productId: null })
   
-  // ✅ OPTIMIZED: API-based pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalProducts, setTotalProducts] = useState(0)
@@ -114,23 +113,17 @@ export default function ProduitsPage() {
     setAlertMessage({ type, title, message })
   }
 
-  // ✅ OPTIMIZED: Fetch from API with pagination
   const fetchProducts = async (page: number) => {
     try {
       setIsLoadingMore(page !== 1)
-      const categoryParam = selectedCategory !== "all" ? `&categoryId=${selectedCategory}` : ""
-      
-      console.log(`📡 Fetching page ${page}${categoryParam}`)
-      
+      const categoryParam = selectedCategory !== "all" ? `&categoryId=${selectedCategory}` : ""      
       const response = await fetch(
         `/api/products?page=${page}&limit=${ITEMS_PER_PAGE}${categoryParam}`
       )
       
       if (!response.ok) throw new Error("Erreur lors du chargement")
       
-      const result = await response.json()
-      console.log(`✅ Loaded page ${page}: ${result.data.length} products, Total: ${result.pagination.total}`)
-      
+      const result = await response.json()      
       setProductsList(result.data)
       setTotalProducts(result.pagination.total)
       setTotalPages(result.pagination.totalPages)
@@ -691,7 +684,6 @@ export default function ProduitsPage() {
                   ))}
                 </div>
 
-                {/* ✅ OPTIMIZED: Better pagination with API loading */}
                 {totalPages > 1 && (
                   <div className="mt-8 border-t pt-6">
                     <div className="flex flex-col gap-4">

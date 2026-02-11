@@ -41,7 +41,6 @@ export default function CreateProductPage() {
   const [successMessage, setSuccessMessage] = useState("")
   const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null)
 
-  // Charger les catégories depuis l'API
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -82,8 +81,6 @@ export default function CreateProductPage() {
   const handleAddNewCategory = async () => {
     if (newCategory.trim()) {
       try {
-        console.log("📝 Creating new category:", newCategory.trim())
-
         const response = await fetch("/api/categories", {
           method: "POST",
           headers: {
@@ -98,24 +95,15 @@ export default function CreateProductPage() {
         }
 
         const createdCategory = await response.json()
-        console.log("✅ Category created:", createdCategory)
-
-        // Ajouter la nouvelle catégorie à la liste
         setCategories([...categories, createdCategory])
-
-        // Sélectionner la nouvelle catégorie
         setForm({ ...form, category: createdCategory.name })
         setShowNewCategory(false)
         setNewCategory("")
-
-        // Afficher le message de succès
         setSuccessMessage("Catégorie créée avec succès!")
         setError("")
-
-        // Masquer le message après 3 secondes
         setTimeout(() => setSuccessMessage(""), 3000)
       } catch (err: any) {
-        console.error("❌ Error creating category:", err)
+        console.error("Error creating category:", err)
         setError(err.message || "Erreur lors de la création de la catégorie")
         setSuccessMessage("")
       }
@@ -143,18 +131,15 @@ export default function CreateProductPage() {
         throw new Error(errorData.error || "Failed to delete category")
       }
 
-      // Supprimer de la liste locale
       setCategories(categories.filter((cat) => cat.id !== categoryId))
-      
-      // Si la catégorie supprimée était sélectionnée, la désélectionner
-      if (form.category === categoryName) {
+            if (form.category === categoryName) {
         setForm({ ...form, category: "" })
       }
 
       setSuccessMessage("Catégorie supprimée avec succès!")
       setTimeout(() => setSuccessMessage(""), 3000)
     } catch (err: any) {
-      console.error("❌ Error deleting category:", err)
+      console.error("Error deleting category:", err)
       setError(err.message || "Erreur lors de la suppression de la catégorie")
     } finally {
       setDeletingCategoryId(null)
@@ -172,7 +157,6 @@ export default function CreateProductPage() {
     }
     
     try {
-      // Validation
       if (!form.name || !form.price || !form.stock || !form.category) {
         throw new Error("Veuillez remplir tous les champs obligatoires")
       }
@@ -180,8 +164,6 @@ export default function CreateProductPage() {
       if (!imageFile) {
         throw new Error("Veuillez sélectionner une image")
       }
-
-      // Créer FormData
       const formData = new FormData()
       formData.append("name", form.name)
       formData.append("description", form.description)
@@ -190,16 +172,13 @@ export default function CreateProductPage() {
       formData.append("stock", form.stock)
       formData.append("image", imageFile)
 
-      // Trouver l'ID de la catégorie sélectionnée
       const selectedCategory = categories.find((cat) => cat.name === form.category)
       if (selectedCategory) {
         formData.append("categoryId", selectedCategory.id.toString())
       } else {
-        // Si la catégorie n'est pas trouvée, utiliser le nom
         formData.append("categoryName", form.category)
       }
 
-      console.log("📤 Envoi du produit avec image...")
 
       const response = await fetch("/api/products", {
         method: "POST",
@@ -212,12 +191,9 @@ export default function CreateProductPage() {
       }
 
       const createdProduct = await response.json()
-      console.log("✅ Product created:", createdProduct)
 
       setSuccessMessage("Produit créé avec succès! Redirection...")
       setError("")
-
-      // Rediriger vers la liste des produits après 2 secondes
       setTimeout(() => {
         router.push("/admin/produits")
       }, 2000)

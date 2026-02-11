@@ -317,7 +317,6 @@ export default function AdminDevisPage() {
   const handleDownloadDevis = (devisData: DevisItem) => {
     try {
       setIsDownloading(true)
-      console.log("📥 Downloading Devis as HTML:", devisData.id)
 
       // Générer le contenu HTML professionnel
       const htmlContent = `<!DOCTYPE html>
@@ -591,7 +590,7 @@ export default function AdminDevisPage() {
     <!-- ÉTABLISSEMENT -->
     ${devisData.etablissement ? `
     <div class="section">
-      <div class="section-title">📦 Établissement</div>
+      <div class="section-title">Établissement</div>
       <div class="info-row">
         <span class="info-label">Nom:</span>
         <span class="info-value">${devisData.etablissement.name}</span>
@@ -602,7 +601,7 @@ export default function AdminDevisPage() {
     <!-- RESPONSABLE -->
     ${devisData.createdBy ? `
     <div class="section">
-      <div class="section-title">👤 Responsable</div>
+      <div class="section-title">Responsable</div>
       <div class="info-row">
         <span class="info-label">Nom:</span>
         <span class="info-value">${devisData.createdBy.firstName} ${devisData.createdBy.lastName}</span>
@@ -616,7 +615,7 @@ export default function AdminDevisPage() {
 
     <!-- CLIENT -->
     <div class="section">
-      <div class="section-title">👥 Informations du Client</div>
+      <div class="section-title">Informations du Client</div>
       <div class="info-grid">
         <div>
           <div class="info-row">
@@ -653,7 +652,7 @@ export default function AdminDevisPage() {
 
     <!-- PRODUITS -->
     <div class="section">
-      <div class="section-title">📋 Produits</div>
+      <div class="section-title">Produits</div>
       ${devisData.items && devisData.items.length > 0 ? `
       <table class="products-table">
         <thead>
@@ -687,7 +686,7 @@ export default function AdminDevisPage() {
 
     <!-- STATUTS -->
     <div class="status-section">
-      <div class="section-title" style="border-bottom: none; margin-bottom: 15px;">🔐 Statuts</div>
+      <div class="section-title" style="border-bottom: none; margin-bottom: 15px;">Statuts</div>
       <div class="status-item">
         <span class="status-label">Responsable:</span>
         <span class="status-value ${devisData.responsableStatus === 'APPROUVE' ? 'approved' : devisData.responsableStatus === 'EN_ATTENTE' ? 'pending' : 'rejected'}">
@@ -710,7 +709,7 @@ export default function AdminDevisPage() {
     <!-- NOTES -->
     ${devisData.clientNotes ? `
     <div class="notes-section">
-      <div class="notes-title">📝 Notes du Client</div>
+      <div class="notes-title">Notes du Client</div>
       <p>${devisData.clientNotes.replace(/\n/g, '<br>')}</p>
     </div>
     ` : ''}
@@ -718,7 +717,7 @@ export default function AdminDevisPage() {
     <!-- PDF SECTION -->
     ${devisData.hasInvoicePdf ? `
     <div class="pdf-section">
-      <div class="pdf-title">📄 Facture PDF</div>
+      <div class="pdf-title">Facture PDF</div>
       <p><strong>Fichier:</strong> ${devisData.invoicePdfName}</p>
       ${devisData.invoicePdfUploadedAt ? `<p><strong>Uploadé le:</strong> ${new Date(devisData.invoicePdfUploadedAt).toLocaleDateString("fr-FR")}</p>` : ''}
     </div>
@@ -744,10 +743,9 @@ export default function AdminDevisPage() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
 
-      console.log("✅ Devis HTML downloaded successfully")
       showAlert("success", "Téléchargement réussi", `Le devis a été téléchargé: devis-${devisData.id.slice(0, 8)}.html`)
     } catch (error) {
-      console.error("❌ Download error:", error)
+      console.error("Download error:", error)
       showAlert("error", "Erreur", "Impossible de télécharger le devis")
     } finally {
       setIsDownloading(false)
@@ -766,7 +764,7 @@ export default function AdminDevisPage() {
 
   const handleUpdateStatus = async (statusType: "responsable" | "admin", newStatus: string) => {
     if (!selectedDevis || !userId) {
-      console.error("❌ Missing required data:", {
+      console.error("Missing required data:", {
         selectedDevisExists: !!selectedDevis,
         userIdExists: !!userId
       })
@@ -775,8 +773,6 @@ export default function AdminDevisPage() {
     }
 
     try {
-      console.log("📢 Sending notification...")
-
       const adminStatusLabels: Record<string, string> = {
         EN_COURS_DE_FACTURATION: "En cours de facturation",
         EN_COURS_DE_LIVRAISON: "En cours de livraison",
@@ -798,17 +794,11 @@ export default function AdminDevisPage() {
         })
       })
 
-      console.log("✅ Notification sent")
     } catch (error) {
-      console.error("⚠️ Error sending notification:", error)
+      console.error("Error sending notification:", error)
     }
     try {
       setIsUpdatingStatus(true)
-      console.log("🔄 Updating devis status", {
-        devisId: selectedDevis.id.slice(0, 8),
-        statusType,
-        newStatus,
-      })
 
       const formData = new FormData()
       formData.append("devisId", selectedDevis.id)
@@ -821,37 +811,26 @@ export default function AdminDevisPage() {
       }
 
       if (selectedPdfFile) {
-        console.log("📎 Adding PDF file:", {
-          name: selectedPdfFile.name,
-          size: `${(selectedPdfFile.size / 1024).toFixed(2)} KB`,
-          type: selectedPdfFile.type,
-        })
         formData.append("invoicePdf", selectedPdfFile)
       }
-
-      console.log("📤 Sending FormData...")
 
       const response = await fetch("/api/devis", {
         method: "PUT",
         body: formData,
       })
 
-      console.log("📥 Response status:", response.status)
 
       const result = await response.json()
-      console.log("📋 Response data:", result)
 
       if (!response.ok) {
         const errorMessage = result?.error || `Erreur HTTP ${response.status}`
-        console.error("❌ API error:", errorMessage)
+        console.error("API error:", errorMessage)
         throw new Error(errorMessage)
       }
 
       if (!result?.data) {
         throw new Error("Données de réponse invalides")
       }
-
-      console.log("✅ Update successful")
       setSelectedDevis(result.data)
       setSelectedPdfFile(null)
       await loadAllDevis(currentPage)
@@ -865,7 +844,7 @@ export default function AdminDevisPage() {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error("❌ Error:", errorMessage)
+      console.error("Error:", errorMessage)
       showAlert("error", "Erreur", errorMessage || "Impossible de mettre à jour le devis")
     } finally {
       setIsUpdatingStatus(false)

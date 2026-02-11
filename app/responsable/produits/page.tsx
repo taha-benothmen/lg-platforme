@@ -41,13 +41,10 @@ export default function ProduitsPage() {
   const [cart, setCart] = useState<any[]>([])
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
-
-  // ✅ Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalProducts, setTotalProducts] = useState(0)
 
-  // Load categories (once)
   useEffect(() => {
     async function loadCategories() {
       try {
@@ -62,7 +59,6 @@ export default function ProduitsPage() {
     loadCategories()
   }, [])
 
-  // ✅ OPTIMIZED: Load products with pagination
   const loadProducts = async (page: number = 1) => {
     try {
       const isFirstPage = page === 1
@@ -96,22 +92,18 @@ export default function ProduitsPage() {
     }
   }
 
-  // Load products on mount
   useEffect(() => {
     loadProducts(1)
   }, [])
 
-  // Reload products when category changes
   useEffect(() => {
     loadProducts(1)
   }, [selectedCategory])
 
-  // Initialize cart from React state (no localStorage)
   useEffect(() => {
     setCart([])
   }, [])
 
-  // ✅ Search is done client-side (no API call needed)
   const filteredProducts = products.filter((p) => {
     return p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.description?.toLowerCase().includes(search.toLowerCase())
@@ -159,7 +151,6 @@ export default function ProduitsPage() {
     router.push('/responsable/devis/create')
   }
 
-  // ✅ Page navigation
   const goToPage = (page: number) => {
     const pageNum = Math.max(1, Math.min(page, totalPages))
     loadProducts(pageNum)

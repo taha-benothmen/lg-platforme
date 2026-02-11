@@ -153,8 +153,6 @@ export default function DevisPage() {
       setAlert(prev => ({ ...prev, show: false }))
     }, 5000)
   }
-
-  // Load sub-establishments
   useEffect(() => {
     const loadSubEstablishments = async () => {
       try {
@@ -173,12 +171,10 @@ export default function DevisPage() {
     loadSubEstablishments()
   }, [])
 
-  // Load devis on mount
   useEffect(() => {
     loadDevis()
   }, [])
 
-  // Reload when filters change
   useEffect(() => {
     if (userId) {
       setCurrentPage(1)
@@ -249,31 +245,25 @@ export default function DevisPage() {
     }
   }
 
-  // ✅ FIXED: Download Devis as HTML file - NOW FETCHES PRODUCTS CORRECTLY
   const handleDownloadDevis = async (devisData: DevisItem) => {
     try {
       setDownloadingId(devisData.id)
-      console.log("📥 Downloading Devis as HTML:", devisData.id)
-
-      // ✅ FETCH FULL DEVIS DATA WITH PRODUCTS
+      
       let fullDevisData = devisData
       try {
         const response = await fetch(`/api/devis/${devisData.id}?userId=${userId}`)
         if (response.ok) {
           const apiResponse = await response.json()
           fullDevisData = apiResponse.data || apiResponse
-          console.log("✅ Full devis data loaded with products:", fullDevisData)
         } else {
-          console.warn("⚠️ Could not fetch full devis data, using partial data")
+          console.warn("Could not fetch full devis data, using partial data")
         }
       } catch (error) {
-        console.warn("⚠️ Error fetching full devis data:", error)
+        console.warn("Error fetching full devis data:", error)
       }
 
-      // ✅ UTILISER LA FONCTION COMMUNE
       const htmlContent = generateDevisPDFContent(fullDevisData)
 
-      // Télécharger
       const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" })
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
@@ -284,10 +274,9 @@ export default function DevisPage() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
 
-      console.log("✅ Devis HTML downloaded successfully with products")
       showAlert("success", "Téléchargement réussi", `Le devis a été téléchargé: devis-${fullDevisData.id.slice(0, 8)}.html`)
     } catch (error) {
-      console.error("❌ Download error:", error)
+      console.error("Download error:", error)
       showAlert("destructive", "Erreur", "Impossible de télécharger le devis")
     } finally {
       setDownloadingId(null)
@@ -303,7 +292,6 @@ export default function DevisPage() {
 
     try {
       setDownloadingId(devisData.id)
-      console.log("📥 Downloading Invoice PDF:", devisData.invoicePdfName)
 
       const url = new URL("/api/devis", window.location.origin)
       url.searchParams.set("devisId", devisData.id)
@@ -327,10 +315,9 @@ export default function DevisPage() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(downloadUrl)
 
-      console.log("✅ Invoice PDF downloaded successfully")
       showAlert("success", "Téléchargement réussi", `La facture a été téléchargée: ${devisData.invoicePdfName}`)
     } catch (error) {
-      console.error("❌ Download error:", error)
+      console.error("Download error:", error)
       showAlert("destructive", "Erreur", error instanceof Error ? error.message : "Impossible de télécharger le PDF")
     } finally {
       setDownloadingId(null)
@@ -366,7 +353,6 @@ export default function DevisPage() {
     }
   }
 
-  // ✅ REMPLACEZ LA FONCTION handleUpdateStatus PAR CECI:
 
   const handleUpdateStatus = async (id: string, statusType: "responsable" | "admin", newStatus: string) => {
     if (!userId) {
@@ -383,7 +369,6 @@ export default function DevisPage() {
         updatePayload.adminStatus = newStatus
       }
 
-      // 1️⃣ Appeler l'API pour mettre à jour le statut
       const response = await fetch("/api/devis", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -393,7 +378,6 @@ export default function DevisPage() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || "Failed to update devis status")
 
-      // 2️⃣ Mettre à jour l'état local
       setDevis((prev) =>
         prev.map((d) =>
           d.id === id
@@ -422,7 +406,6 @@ export default function DevisPage() {
 
       showAlert("success", "Mise à jour réussie", "Le statut a été mis à jour avec succès")
 
-      // ✅ 3️⃣ APPELER LA NOTIFICATION (C'EST IMPORTANT!)
       await notifyAdminsOfStatusChange(id, statusType, newStatus)
 
     } catch (error: any) {
@@ -432,17 +415,14 @@ export default function DevisPage() {
       setUpdatingStatus(false)
     }
   }
-  // ✅ NOUVELLE FONCTION: Utiliser le notificationService
-  // ✅ CETTE FONCTION DOIT EXISTER
+
   const notifyAdminsOfStatusChange = async (
     devisId: string,
     statusType: string,
     newStatus: string
   ) => {
     try {
-      console.log("📢 Notifying admins of status change...")
 
-      // Récupérer le devis complet
       const devisResponse = await fetch(`/api/devis/${devisId}?userId=${userId}`)
       if (!devisResponse.ok) {
         console.warn("⚠️ Could not fetch full devis data")
@@ -451,9 +431,6 @@ export default function DevisPage() {
 
       const devisData = await devisResponse.json()
       const devis = devisData.data || devisData
-
-      console.log("📢 Calling /api/notifications/send-to-all-admins")
-
       // Appeler le nouvel endpoint
       const notificationResponse = await fetch("/api/notifications/send-to-all-admins", {
         method: "POST",
@@ -478,16 +455,15 @@ export default function DevisPage() {
         try {
           const notifData = await notificationResponse.json()
           if (notificationResponse.ok) {
-            console.log(`✅ Notifications sent to ${notifData.count} admins`)
           } else {
-            console.warn("⚠️ Failed to send notifications")
+            console.warn("Failed to send notifications")
           }
         } catch (jsonError) {
-          console.warn("⚠️ Invalid JSON response")
+          console.warn("Invalid JSON response")
         }
       }
     } catch (error) {
-      console.error("❌ Error sending notifications:", error)
+      console.error("Error sending notifications:", error)
     }
   }
   const handleShareDevis = async (devisData: DevisItem) => {
@@ -906,7 +882,6 @@ export default function DevisPage() {
                       </div>
                     ))
                   ) : selectedDevis.itemsCount > 0 ? (
-                    // ✅ Si itemsCount > 0 mais items est vide, afficher un message de chargement
                     <p className="text-sm text-muted-foreground italic">
                       Chargement des produits...
                     </p>
@@ -931,7 +906,7 @@ export default function DevisPage() {
                     <Separator />
                     <div className="space-y-3 bg-blue-50 p-4 rounded-lg border border-blue-200">
                       <p className="text-sm font-semibold text-blue-900 flex items-center gap-2">
-                        💳 Plan de paiement échelonné
+                        Plan de paiement échelonné
                       </p>
                       <div className="bg-white p-3 rounded border border-blue-100">
                         <div className="flex justify-between items-center mb-2">
@@ -992,7 +967,7 @@ export default function DevisPage() {
                     <div className="space-y-3 bg-blue-50 p-4 rounded-lg border border-blue-200">
                       <div>
                         <p className="text-sm font-semibold text-blue-900 uppercase tracking-wide mb-3">
-                          📋 Réponse de l'Admin
+                          Réponse de l'Admin
                         </p>
                         <Badge variant={getStatusBadgeVariant(selectedDevis.adminStatus)} className="w-fit text-base py-2 px-3">
                           {STATUS_LABELS[selectedDevis.adminStatus] || selectedDevis.adminStatus}
@@ -1036,7 +1011,7 @@ export default function DevisPage() {
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    📥 Télécharger Devis
+                    Télécharger Devis
                   </Button>
 
                   <Button
@@ -1126,7 +1101,7 @@ export default function DevisPage() {
                 {selectedDevis.responsableStatus === "APPROUVE" && (
                   <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                     <p className="text-sm text-blue-700 font-semibold text-center">
-                      ✅ Devis approuvé - En attente de traitement par l'admin
+                      Devis approuvé - En attente de traitement par l'admin
                     </p>
                   </div>
                 )}
@@ -1134,7 +1109,7 @@ export default function DevisPage() {
                 {selectedDevis.responsableStatus === "REJETE" && (
                   <div className="bg-red-50 p-3 rounded-lg border border-red-200">
                     <p className="text-sm text-red-700 font-semibold">
-                      ❌ Ce devis est rejeté et ne peut plus être modifié
+                      Ce devis est rejeté et ne peut plus être modifié
                     </p>
                   </div>
                 )}

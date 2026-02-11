@@ -15,9 +15,6 @@ export async function GET(
       )
     }
 
-    console.log(`🔍 Fetching user data for ID: ${id}`)
-
-    // Récupère l'utilisateur AVEC son établissement complet
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -31,7 +28,6 @@ export async function GET(
         etablissementId: true,
         createdAt: true,
         updatedAt: true,
-        // ✅ RETOURNE L'ÉTABLISSEMENT COMPLET
         etablissement: {
           select: {
             id: true,
@@ -49,18 +45,11 @@ export async function GET(
     })
 
     if (!user) {
-      console.warn(`⚠️ Utilisateur non trouvé: ${id}`)
+      console.warn(`Utilisateur non trouvé: ${id}`)
       return NextResponse.json(
         { error: "Utilisateur non trouvé", success: false },
         { status: 404 }
       )
-    }
-
-    console.log(`✅ Utilisateur chargé: ${user.firstName} ${user.lastName}`)
-    if (user.etablissement) {
-      console.log(`📦 Établissement: ${user.etablissement.name}`)
-    } else {
-      console.log(`⚠️ Aucun établissement assigné`)
     }
 
     return NextResponse.json(
@@ -75,14 +64,13 @@ export async function GET(
         etablissementId: user.etablissementId,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
-        // ✅ L'ÉTABLISSEMENT EST ICI
         etablissement: user.etablissement,
         success: true,
       },
       { status: 200 }
     )
   } catch (error) {
-    console.error("❌ Erreur lors du chargement de l'utilisateur:", error)
+    console.error("Erreur lors du chargement de l'utilisateur:", error)
     return NextResponse.json(
       { error: "Erreur serveur", success: false },
       { status: 500 }
@@ -90,7 +78,6 @@ export async function GET(
   }
 }
 
-// ✅ DELETE - Supprimer un utilisateur
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -120,7 +107,6 @@ export async function DELETE(
       where: { id },
     })
 
-    console.log(`✅ Utilisateur ${id} supprimé`)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting user:", error)
@@ -131,7 +117,6 @@ export async function DELETE(
   }
 }
 
-// ✅ PUT - Modifier un utilisateur
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -180,7 +165,6 @@ export async function PUT(
       },
     })
 
-    console.log(`✅ Utilisateur ${id} modifié`)
     return NextResponse.json(updatedUser)
   } catch (error) {
     console.error("Error updating user:", error)

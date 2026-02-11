@@ -26,7 +26,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     setError("")
 
     try {
-      console.log("📝 Login attempt avec email:", email)
       
       const response = await fetch("/api/auth/login", {
         method: "POST",
@@ -37,7 +36,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
       })
 
       const data = await response.json()
-      console.log("📦 Réponse de l'API:", data)
 
       if (!response.ok) {
         setError(data.error || "Login failed")
@@ -45,17 +43,13 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
         return
       }
 
-      // ✅ Vérifier que data.user existe
       if (!data.user) {
-        console.error("❌ ERREUR: data.user est undefined!")
+        console.error("ERREUR: data.user est undefined!")
         setError("Invalid server response: missing user data")
         setLoading(false)
         return
       }
 
-      console.log("✅ Données utilisateur reçues:", data.user)
-
-      // ✅ Sauvegarder dans localStorage
       const userSession = {
         id: data.user.id || data.user.userId,
         email: data.user.email,
@@ -69,9 +63,8 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
       localStorage.setItem("userRole", data.user.role || "")
       localStorage.setItem("userEmail", data.user.email || "")
 
-      console.log("✅ localStorage mis à jour")
 
-      // ✅ IMPORTANT: Sauvegarder les cookies pour le middleware
+      // IMPORTANT: Sauvegarder les cookies pour le middleware
       // Le middleware cherche 'lg_user_role' dans les cookies
       const role = data.user.role
 
@@ -89,7 +82,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
         }),
       })
 
-      console.log("✅ Cookies mis à jour")
 
       // Save session in authUtils
       authUtils.setSession({
@@ -98,16 +90,14 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
         route: data.user.route,
       })
 
-      console.log("✅ Redirection vers:", data.user.route)
       
       // Redirect after a short delay to ensure cookies are set
       setTimeout(() => {
-        console.log("🔄 Navigation vers:", data.user.route)
         router.push(data.user.route)
       }, 100)
     } catch (err) {
       setError("An error occurred. Please try again.")
-      console.error("❌ Erreur:", err)
+      console.error("Erreur:", err)
       setLoading(false)
     }
   }

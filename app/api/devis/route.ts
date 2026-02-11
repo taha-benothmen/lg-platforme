@@ -27,7 +27,6 @@ type DevisPayload = {
   total: number
 }
 
-// Validate user access with admin support
 async function validateUserAccess(userId: string) {
   if (!userId || userId.trim() === "") {
     return { valid: false, error: "userId is required" }
@@ -53,7 +52,6 @@ async function validateUserAccess(userId: string) {
   return { valid: true, user, isAdmin: false }
 }
 
-// Get all child establishment IDs recursively
 async function getAllChildEstablishmentIds(parentId: string): Promise<string[]> {
   const children = await prisma.etablissement.findMany({
     where: { parentId: parentId },
@@ -70,7 +68,6 @@ async function getAllChildEstablishmentIds(parentId: string): Promise<string[]> 
   return allIds
 }
 
-// Format devis response - ✅ ITEMS TOUJOURS INCLUS
 function formatDevisResponse(devis: any, includePdf: boolean = false) {
   const response: any = {
     id: devis.id,
@@ -119,7 +116,6 @@ function formatDevisResponse(devis: any, includePdf: boolean = false) {
     updatedAt: devis.updatedAt,
   }
 
-  // ✅ TOUJOURS retourner les items formatés
   if (devis.items && devis.items.length > 0) {
     response.items = devis.items.map((item: any) => ({
       id: item.id,
@@ -135,7 +131,6 @@ function formatDevisResponse(devis: any, includePdf: boolean = false) {
     response.items = []
   }
 
-  // Include PDF as base64 if requested
   if (includePdf && devis.invoicePdf && devis.invoicePdfType) {
     const base64String = Buffer.isBuffer(devis.invoicePdf)
       ? devis.invoicePdf.toString('base64')
@@ -146,7 +141,6 @@ function formatDevisResponse(devis: any, includePdf: boolean = false) {
   return response
 }
 
-// GET with pagination and PDF download
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -177,9 +171,7 @@ export async function GET(request: NextRequest) {
 
     const { user, isAdmin } = userValidation as any
 
-    // 📥 Handle PDF Download
     if (downloadPdf && devisId) {
-      console.log("📥 Downloading PDF for devis:", devisId)
 
       const devis = await prisma.devis.findUnique({
         where: { id: devisId },
@@ -193,7 +185,7 @@ export async function GET(request: NextRequest) {
       })
 
       if (!devis) {
-        console.warn(`❌ Devis not found: ${devisId}`)
+        console.warn(`Devis not found: ${devisId}`)
         return NextResponse.json(
           { error: "Devis non trouvé", success: false },
           { status: 404 }
@@ -201,7 +193,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (!isAdmin && devis.createdById !== userId) {
-        console.warn(`❌ Unauthorized PDF access for devis ${devisId}`)
+        console.warn(`Unauthorized PDF access for devis ${devisId}`)
         return NextResponse.json(
           { error: "Non autorisé", success: false },
           { status: 403 }
@@ -209,14 +201,13 @@ export async function GET(request: NextRequest) {
       }
 
       if (!devis.invoicePdf || !devis.invoicePdfName || !devis.invoicePdfType) {
-        console.warn(`❌ PDF not available for devis ${devisId}`)
+        console.warn(`PDF not available for devis ${devisId}`)
         return NextResponse.json(
           { error: "Facture PDF non disponible", success: false },
           { status: 404 }
         )
       }
 
-      console.log("✅ PDF found:", devis.invoicePdfName)
 
       let pdfBuffer: Buffer
 
@@ -234,7 +225,6 @@ export async function GET(request: NextRequest) {
         throw new Error("Invalid PDF data format")
       }
 
-      console.log("📦 PDF size:", pdfBuffer.length, "bytes")
 
       return new NextResponse(pdfBuffer.toString('base64'), {
         status: 200,
@@ -249,7 +239,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Regular GET handlers (list and details)
     let etablissementIds: string[] = []
 
     if (isAdmin) {
@@ -359,7 +348,6 @@ export async function GET(request: NextRequest) {
       take: limit,
     })
 
-    console.log(`📊 Devis: Page ${page}/${Math.ceil(total / limit)}, Total: ${total}`)
 
     return NextResponse.json(
       {
@@ -378,7 +366,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create a new quote
 export async function POST(request: NextRequest) {
   try {
     const body: DevisPayload = await request.json()
@@ -513,7 +500,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Update devis status with PDF upload support
 export async function PUT(request: NextRequest) {
   let body: any = null
   
@@ -521,7 +507,6 @@ export async function PUT(request: NextRequest) {
     const contentType = request.headers.get("content-type") || ""
     let isFormData = false
 
-    // Handle FormData for PDF uploads
     if (contentType.includes("multipart/form-data")) {
       try {
         isFormData = true
@@ -548,16 +533,8 @@ export async function PUT(request: NextRequest) {
           invoicePdf: invoicePdf as File | null,
         }
 
-        console.log("📤 FormData parsed:", {
-          devisId: body.devisId,
-          userId: body.userId,
-          hasResponsableStatus: !!body.responsableStatus,
-          hasAdminStatus: !!body.adminStatus,
-          hasPdf: !!body.invoicePdf,
-          pdfName: body.invoicePdf?.name,
-        })
       } catch (parseError) {
-        console.error("❌ Error parsing FormData:", parseError)
+        console.error("Error parsing FormData:", parseError)
         return NextResponse.json(
           { error: "Invalid FormData format", success: false },
           { status: 400 }
@@ -635,7 +612,7 @@ export async function PUT(request: NextRequest) {
     })
 
     if (!devis) {
-      console.warn(`❌ Devis not found: ${devisId}`)
+      console.warn(`Devis not found: ${devisId}`)
       return NextResponse.json(
         { error: "Devis not found", success: false },
         { status: 404 }
@@ -701,7 +678,6 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Process PDF file if provided
     if (invoicePdf && invoicePdf instanceof File && invoicePdf.size > 0) {
       try {
         const arrayBuffer = await invoicePdf.arrayBuffer()
@@ -710,13 +686,8 @@ export async function PUT(request: NextRequest) {
         updateData.invoicePdfType = invoicePdf.type
         updateData.invoicePdfUploadedAt = new Date()
         
-        console.log("✅ PDF processed:", {
-          name: invoicePdf.name,
-          size: invoicePdf.size,
-          type: invoicePdf.type,
-        })
       } catch (uploadError) {
-        console.error("❌ Error processing PDF:", uploadError)
+        console.error("Error processing PDF:", uploadError)
         return NextResponse.json(
           { error: "Failed to process PDF file", success: false },
           { status: 400 }
@@ -724,14 +695,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    console.log("🔄 Updating devis:", {
-      devisId,
-      statusChanges: {
-        responsableStatus: responsableStatus || "unchanged",
-        adminStatus: adminStatus || "unchanged",
-      },
-      hasPdfUpdate: !!updateData.invoicePdf,
-    })
+   
 
     const updatedDevis = await prisma.devis.update({
       where: { id: devisId },
@@ -745,7 +709,7 @@ export async function PUT(request: NextRequest) {
       },
     })
 
-    console.log("✅ Devis updated successfully:", {
+    console.log("Devis updated successfully:", {
       devisId: updatedDevis.id,
       newResponsableStatus: updatedDevis.responsableStatus,
       newAdminStatus: updatedDevis.adminStatus,
@@ -760,7 +724,7 @@ export async function PUT(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
-    console.error("❌ Error updating devis:", {
+    console.error("Error updating devis:", {
       devisId: body?.devisId,
       userId: body?.userId,
       requestedChanges: {
@@ -781,7 +745,6 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - Delete a devis
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)

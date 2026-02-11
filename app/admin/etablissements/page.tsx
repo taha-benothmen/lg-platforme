@@ -79,7 +79,6 @@ export default function UtilisateursPage() {
   const [alertMessage, setAlertMessage] = useState<AlertMessage | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalUsers, setTotalUsers] = useState(0)
@@ -102,7 +101,6 @@ export default function UtilisateursPage() {
       if (!etabResponse.ok) throw new Error("Erreur lors du chargement des établissements")
       const etabData = await etabResponse.json()
       setEtablissements(etabData)
-      console.log("Établissements loaded once")
     } catch (error) {
       console.error("Erreur:", error)
       setAlertMessage({

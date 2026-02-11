@@ -1,4 +1,3 @@
-// app/api/notifications/route.ts
 import { NextRequest, NextResponse } from "next/server"
 import { notificationService } from "@/lib/notification.service"
 
@@ -50,7 +49,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Mark notification as read
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
@@ -95,7 +93,6 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// Delete notification
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -123,7 +120,6 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// Get unread count
 export async function HEAD(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)

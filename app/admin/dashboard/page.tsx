@@ -53,7 +53,6 @@ interface DashboardData {
   }>
 }
 
-// ✅ Transform topProducts to ChartProductsDonut format
 const transformTopProductsData = (topProducts: Array<{ name: string; value: number }>) => {
   const colors = [
     "#3b82f6", // blue
@@ -73,7 +72,6 @@ const transformTopProductsData = (topProducts: Array<{ name: string; value: numb
   }))
 }
 
-// Component for ranking cards (reusable)
 const RankingCard = ({
   rank,
   name,
@@ -125,22 +123,20 @@ export default function Page() {
       setError(null)
       
       const url = `/api/dashboard?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
-      console.log(`📡 Fetching: ${url}`)
       
       const response = await fetch(url)
       
       if (!response.ok) {
         const errorData = await response.json()
-        console.error(`❌ API Error:`, errorData)
+        console.error(`API Error:`, errorData)
         throw new Error(errorData.error || `HTTP ${response.status}`)
       }
       
       const data = await response.json()
-      console.log(`✅ Dashboard data:`, data)
       setDashboardData(data)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
-      console.error(`❌ Error:`, errorMsg)
+      console.error(`Error:`, errorMsg)
       setError(errorMsg)
       
       setDashboardData({
@@ -187,9 +183,8 @@ export default function Page() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       
-      console.log("✅ File downloaded successfully")
     } catch (error) {
-      console.error(`❌ Export error:`, error)
+      console.error(`Export error:`, error)
       alert(`Erreur lors du téléchargement: ${error}`)
     } finally {
       setExporting(false)
@@ -244,7 +239,7 @@ export default function Page() {
                 {/* Error Alert */}
                 {error && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <p className="text-red-800 font-semibold">❌ Erreur</p>
+                    <p className="text-red-800 font-semibold">Erreur</p>
                     <p className="text-red-700 text-sm mt-1">{error}</p>
                   </div>
                 )}
@@ -479,7 +474,6 @@ export default function Page() {
                   </div>
                 )}
 
-                {/* Extra space for scrolling */}
                 <div className="h-8" />
               </div>
             </div>

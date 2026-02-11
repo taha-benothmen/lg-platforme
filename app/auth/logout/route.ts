@@ -25,7 +25,6 @@ export async function POST() {
     maxAge: 0,
   })
 
-  console.log("✅ Cookies de logout supprimés")
 
   return response
 }

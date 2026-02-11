@@ -1,4 +1,3 @@
-// lib/notification.service.ts
 import { prisma } from "@/lib/prisma"
 import { NotificationType } from "@prisma/client"
 
@@ -30,16 +29,11 @@ class NotificationService {
         },
       })
 
-      console.log("✅ Notification créée:", {
-        id: notification.id,
-        userId: notification.userId,
-        type: notification.type,
-        title: notification.title,
-      })
+     
 
       return notification
     } catch (error) {
-      console.error("❌ Erreur lors de la création de la notification:", error)
+      console.error("Erreur lors de la création de la notification:", error)
       throw error
     }
   }
@@ -67,10 +61,9 @@ class NotificationService {
         )
       )
 
-      console.log(`📢 ${notifications.length} admins notifiés`)
       return notifications
     } catch (error) {
-      console.error("❌ Erreur lors de la notification des admins:", error)
+      console.error("Erreur lors de la notification des admins:", error)
     }
   }
 
@@ -94,10 +87,9 @@ class NotificationService {
         devisId: devis.id,
       })
 
-      console.log(`📢 Utilisateur ${createdBy.id} notifié du changement de statut`)
       return notification
     } catch (error) {
-      console.error("❌ Erreur lors de la notification de changement de statut:", error)
+      console.error("Erreur lors de la notification de changement de statut:", error)
     }
   }
 
@@ -119,7 +111,7 @@ class NotificationService {
 
       return notifications
     } catch (error) {
-      console.error("❌ Erreur lors de la récupération des notifications:", error)
+      console.error("Erreur lors de la récupération des notifications:", error)
       throw error
     }
   }
@@ -154,7 +146,7 @@ class NotificationService {
         },
       }
     } catch (error) {
-      console.error("❌ Erreur lors de la récupération des notifications:", error)
+      console.error("Erreur lors de la récupération des notifications:", error)
       throw error
     }
   }
@@ -174,7 +166,7 @@ class NotificationService {
 
       return notification
     } catch (error) {
-      console.error("❌ Erreur lors du marquage de la notification comme lue:", error)
+      console.error("Erreur lors du marquage de la notification comme lue:", error)
       throw error
     }
   }
@@ -193,15 +185,13 @@ class NotificationService {
         },
       })
 
-      // 2️⃣ Puis supprimer la notification
       await prisma.notification.delete({
         where: { id: notificationId },
       })
 
-      console.log(`✅ Notification ${notificationId} marquée comme lue et supprimée`)
       return { success: true }
     } catch (error) {
-      console.error("❌ Erreur lors du marquage et suppression de la notification:", error)
+      console.error("Erreur lors du marquage et suppression de la notification:", error)
       throw error
     }
   }
@@ -222,10 +212,9 @@ class NotificationService {
         },
       })
 
-      console.log(`✅ ${result.count} notifications marquées comme lues`)
       return result
     } catch (error) {
-      console.error("❌ Erreur lors du marquage des notifications:", error)
+      console.error("Erreur lors du marquage des notifications:", error)
       throw error
     }
   }
@@ -239,9 +228,8 @@ class NotificationService {
         where: { id: notificationId },
       })
 
-      console.log(`✅ Notification ${notificationId} supprimée`)
     } catch (error) {
-      console.error("❌ Erreur lors de la suppression de la notification:", error)
+      console.error("Erreur lors de la suppression de la notification:", error)
       throw error
     }
   }
@@ -260,7 +248,7 @@ class NotificationService {
 
       return count
     } catch (error) {
-      console.error("❌ Erreur lors du comptage des notifications non lues:", error)
+      console.error("Erreur lors du comptage des notifications non lues:", error)
       throw error
     }
   }

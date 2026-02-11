@@ -43,11 +43,10 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 24 * 7, // 7 jours
     })
 
-    console.log("✅ Cookies définis pour:", { userId, role, email })
 
     return response
   } catch (error) {
-    console.error("❌ Erreur lors de la définition des cookies:", error)
+    console.error("Erreur lors de la définition des cookies:", error)
     return NextResponse.json(
       { error: "Failed to set cookies" },
       { status: 500 }

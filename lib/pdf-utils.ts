@@ -1,5 +1,3 @@
-// File: lib/pdf-utils.ts
-
 export const generateDevisPDFContent = (devisData: any, isFromCreation: boolean = false) => {
     const {
       id,
@@ -240,7 +238,7 @@ export const generateDevisPDFContent = (devisData: any, isFromCreation: boolean 
       <!-- ÉTABLISSEMENT -->
       ${etablissement ? `
       <div class="section">
-        <div class="section-title">📦 Établissement</div>
+        <div class="section-title">Établissement</div>
         <div class="info-row">
           <span class="info-label">Nom:</span>
           <span class="info-value">${etablissement.name}</span>
@@ -314,7 +312,7 @@ export const generateDevisPDFContent = (devisData: any, isFromCreation: boolean 
   
       <!-- PRODUITS -->
       <div class="section">
-        <div class="section-title">📋 Produits (${itemsCount})</div>
+        <div class="section-title">Produits (${itemsCount})</div>
         ${items && items.length > 0 ? `
         <table class="products-table">
           <thead>
@@ -349,7 +347,7 @@ export const generateDevisPDFContent = (devisData: any, isFromCreation: boolean 
       <!-- PLAN DE PAIEMENT ÉCHELONNÉ -->
       ${paymentPeriod && paymentPeriod > 0 ? `
       <div class="section">
-        <div class="section-title">💳 Plan de paiement échelonné</div>
+        <div class="section-title">Plan de paiement échelonné</div>
         <table class="payment-plan-table">
           <thead>
             <tr>
@@ -372,7 +370,7 @@ export const generateDevisPDFContent = (devisData: any, isFromCreation: boolean 
       <!-- NOTES -->
       ${clientNotes ? `
       <div class="notes-section">
-        <div class="notes-title">📝 Notes</div>
+        <div class="notes-title">Notes</div>
         <p>${clientNotes.replace(/\n/g, '<br>')}</p>
       </div>
       ` : ''}

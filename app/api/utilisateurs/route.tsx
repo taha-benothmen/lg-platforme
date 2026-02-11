@@ -1,4 +1,3 @@
-// app/api/users/route.ts
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -8,7 +7,6 @@ export async function GET(request: NextRequest) {
     const role = searchParams.get("role")
     const isActive = searchParams.get("isActive") !== "false"
 
-    // Récupérer les utilisateurs avec filtres optionnels
     const whereClause: any = {}
 
     if (role) {
@@ -30,9 +28,6 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { createdAt: "desc" },
     })
-
-    console.log(`✅ Found ${users.length} users with role: ${role || "any"}`)
-
     return NextResponse.json(
       {
         success: true,
@@ -41,7 +36,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
-    console.error("❌ Error fetching users:", error)
+    console.error("Error fetching users:", error)
     return NextResponse.json(
       { error: "Server error while fetching users", success: false },
       { status: 500 }

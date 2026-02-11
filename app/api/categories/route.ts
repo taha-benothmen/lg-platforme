@@ -26,33 +26,28 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    console.log("Received data:", body)
     
     const { name, description } = body
 
     if (!name || name.trim() === "") {
-      console.log("Name is missing or empty")
       return NextResponse.json(
         { error: "Category name is required" },
         { status: 400 }
       )
     }
 
-    console.log("Checking if category exists:", name)
     
     const existingCategory = await prisma.category.findUnique({
       where: { name: name.trim() },
     })
 
     if (existingCategory) {
-      console.log("Category already exists:", existingCategory)
       return NextResponse.json(
         { error: "Category already exists" },
         { status: 409 }
       )
     }
 
-    console.log("Creating category...")
     
     const category = await prisma.category.create({
       data: {
@@ -61,7 +56,6 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    console.log("Category created successfully:", category)
     
     return NextResponse.json(category, { status: 201 })
   } catch (error) {
@@ -94,7 +88,6 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    console.log("Checking if category exists:", categoryId)
 
     const category = await prisma.category.findUnique({
       where: { id: categoryId },
@@ -119,13 +112,11 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    console.log("Deleting category...")
 
     const deletedCategory = await prisma.category.delete({
       where: { id: categoryId },
     })
 
-    console.log("Category deleted successfully:", deletedCategory)
 
     return NextResponse.json(
       { message: "Category deleted successfully", category: deletedCategory },

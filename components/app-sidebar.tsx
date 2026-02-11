@@ -50,12 +50,9 @@ export const AppSidebar: FC<AppSidebarProps> = ({ menu }) => {
   useEffect(() => {
     // Récupérer les données utilisateur du localStorage
     const userSession = localStorage.getItem("userSession")
-    console.log("📦 userSession from localStorage:", userSession)
-
     if (userSession) {
       try {
         const user: UserSession = JSON.parse(userSession)
-        console.log("User parsed:", user)
 
         setUserId(user.id)
 
@@ -72,7 +69,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({ menu }) => {
           displayName = user.email.split("@")[0]
         }
 
-        console.log("Display name set to:", displayName)
         setUserName(displayName)
       } catch (error) {
         console.error("Erreur lors de la lecture des données utilisateur:", error)

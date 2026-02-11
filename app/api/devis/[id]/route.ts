@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-
-
 async function validateUserAccess(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -32,7 +30,6 @@ function formatDevisResponse(devis: any) {
     total: devis.total.toString(),
     status: devis.status,
     itemsCount: devis.items?.length || 0,
-    // ✅ ADD PAYMENT PLAN FIELDS
     paymentPeriod: devis.paymentPeriod || null,
     monthlyPayment: devis.monthlyPayment ? devis.monthlyPayment.toString() : null,
     createdBy: devis.createdBy
@@ -80,14 +77,11 @@ function formatDevisResponse(devis: any) {
   }
 }
 
-/* ================= GET ================= */
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Await params as it's now a Promise in Next.js 15+
     const { id } = await params
 
     if (!id) {
@@ -193,7 +187,6 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Await params as it's now a Promise in Next.js 15+
     const { id } = await params
 
     if (!id) {
@@ -213,7 +206,6 @@ export async function PUT(
       )
     }
 
-    // Validate user exists and has an establishment
     const userValidation = await validateUserAccess(userId)
     if (!userValidation.valid) {
       return NextResponse.json(
@@ -239,7 +231,6 @@ export async function PUT(
       )
     }
 
-    // Fetch devis with all necessary data
     const devis = await prisma.devis.findUnique({
       where: { id },
       select: {
@@ -256,7 +247,6 @@ export async function PUT(
       )
     }
 
-    // Check if user has access to this devis (same establishment)
     /*if (devis.etablissementId !== userValidation.user.etablissementId) {
       return NextResponse.json(
         { error: "Accès non autorisé", success: false },
@@ -264,7 +254,6 @@ export async function PUT(
       )
     }*/
 
-    // Update the devis
     const updatedDevis = await prisma.devis.update({
       where: { id },
       data: {
@@ -332,14 +321,11 @@ export async function PUT(
   }
 }
 
-/* ================= DELETE ================= */
-
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Await params as it's now a Promise in Next.js 15+
     const { id } = await params
 
     if (!id) {

@@ -103,7 +103,6 @@ export default function CreerDevisPage() {
     description: ""
   })
 
-  // ✅ Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalProducts, setTotalProducts] = useState(0)
@@ -120,7 +119,6 @@ export default function CreerDevisPage() {
     notes: ""
   })
 
-  // ✅ Payment period state
   const [paymentPeriod, setPaymentPeriod] = useState<number>(0)
 
   const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
@@ -130,7 +128,6 @@ export default function CreerDevisPage() {
     }, 5000)
   }
 
-  // Load user ID and categories on mount
   useEffect(() => {
     async function loadData() {
       try {
@@ -148,43 +145,32 @@ export default function CreerDevisPage() {
 
         setUserId(currentUserId)
 
-        // ✅ FIXED: Load user info WITH establishment
         try {
           const userResponse = await fetch(`/api/utilisateurs/${currentUserId}`)
           if (userResponse.ok) {
             const userData = await userResponse.json()
             setUserInfo(userData)
-            console.log("📊 User data loaded:", userData)
-            console.log("📊 User etablissementId:", userData.etablissementId)
 
-            // ✅ FIXED: L'établissement vient DIRECTEMENT de userData.etablissement
-            // Plus besoin d'appels API supplémentaires!
             if (userData.etablissement) {
-              console.log("✅ Establishment found:", userData.etablissement)
-              console.log("   - Name:", userData.etablissement.name)
-              console.log("   - Address:", userData.etablissement.address)
-              console.log("   - Phone:", userData.etablissement.phone)
-              console.log("   - Email:", userData.etablissement.email)
+              
               setEtablissementInfo(userData.etablissement)
             } else {
-              console.warn("⚠️ No establishment assigned to user")
-              console.warn("   User has etablissementId:", userData.etablissementId)
-              console.warn("   But etablissement object is null")
+              console.warn("No establishment assigned to user")
+              console.warn("User has etablissementId:", userData.etablissementId)
+              console.warn("But etablissement object is null")
               setEtablissementInfo(null)
             }
           } else {
-            console.error("❌ User API returned non-ok status:", userResponse.status)
+            console.error("User API returned non-ok status:", userResponse.status)
           }
         } catch (error) {
-          console.error("❌ Error loading user info:", error)
+          console.error("Error loading user info:", error)
         }
 
-        // Load categories
         const categoriesResponse = await fetch('/api/categories')
         const categoriesData = await categoriesResponse.json()
         setCategories(categoriesData || [])
 
-        // Load cart from localStorage
         const cartData = localStorage.getItem("cart")
         if (cartData) {
           try {
@@ -199,7 +185,6 @@ export default function CreerDevisPage() {
           }
         }
 
-        // Load first page of products
         await loadProducts(1)
       } catch (error) {
         console.error("Error loading data:", error)
@@ -209,7 +194,6 @@ export default function CreerDevisPage() {
     loadData()
   }, [router])
 
-  // ✅ Load products with pagination
   const loadProducts = async (page: number = 1) => {
     try {
       const isFirstPage = page === 1
@@ -242,23 +226,19 @@ export default function CreerDevisPage() {
     }
   }
 
-  // Reload products when category changes
   useEffect(() => {
     loadProducts(1)
   }, [selectedCategory])
 
-  // ✅ Page navigation
   const goToPage = (page: number) => {
     const pageNum = Math.max(1, Math.min(page, totalPages))
     loadProducts(pageNum)
-    // Scroll to products section
     const productsSection = document.getElementById("products-section")
     if (productsSection) {
       productsSection.scrollIntoView({ behavior: "smooth" })
     }
   }
 
-  // Handle product selection/deselection
   const handleProductToggle = (productId: number, isChecked: boolean) => {
     setSelectedProducts(prev => {
       const newMap = new Map(prev)
@@ -271,7 +251,6 @@ export default function CreerDevisPage() {
     })
   }
 
-  // Change product quantity
   const handleQuantityChange = (productId: number, quantity: number) => {
     if (quantity <= 0) return
     setSelectedProducts(prev => {
@@ -281,13 +260,11 @@ export default function CreerDevisPage() {
     })
   }
 
-  // ✅ Clear all selections
   const handleClearAll = () => {
     setSelectedProducts(new Map())
     showAlert("success", "Sélection effacée", "Tous les produits ont été désélectionnés")
   }
 
-  // Calculate total
   const calculateTotal = () => {
     let total = 0
     selectedProducts.forEach((quantity, productId) => {
@@ -299,7 +276,6 @@ export default function CreerDevisPage() {
     return total
   }
 
-  // Get total items count
   const getTotalItems = () => {
     let total = 0
     selectedProducts.forEach(quantity => {
@@ -308,7 +284,6 @@ export default function CreerDevisPage() {
     return total
   }
 
-  // Handle client info changes
   const handleClientInfoChange = (field: keyof ClientInfo, value: string) => {
     setClientInfo(prev => ({
       ...prev,
@@ -316,13 +291,11 @@ export default function CreerDevisPage() {
     }))
   }
 
-  // Calculate monthly payment
   const calculateMonthlyPayment = () => {
     if (paymentPeriod <= 0) return 0
     return calculateTotal() / paymentPeriod
   }
 
-  // Validate form
   const isFormValid = () => {
     return (
       clientInfo.nom.trim() !== "" &&
@@ -335,7 +308,6 @@ export default function CreerDevisPage() {
     )
   }
 
-  // ✅ Download PDF
   const handleDownloadPDF = async () => {
     if (!isFormValid()) {
       showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
@@ -345,7 +317,6 @@ export default function CreerDevisPage() {
     setIsDownloading(true)
   
     try {
-      // Préparer les données du devis
       const devisData = {
         id: `draft-${new Date().getTime()}`,
         clientName: `${clientInfo.prenom} ${clientInfo.nom}`,
@@ -388,10 +359,7 @@ export default function CreerDevisPage() {
         } : null,
       }
   
-      // Générer le contenu HTML
       const htmlContent = generateDevisPDFContent(devisData)  
-  
-      // Télécharger
       const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" })
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
@@ -410,7 +378,6 @@ export default function CreerDevisPage() {
       setIsDownloading(false)
     }
   }
-  // Share quote
   const handleShareQuote = () => {
     if (!isFormValid()) {
       showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
@@ -424,7 +391,6 @@ export default function CreerDevisPage() {
         title: 'Devis',
         text: shareText,
       }).then(() => {
-        console.log('Quote shared successfully')
       }).catch((error) => {
         console.error('Error sharing quote:', error)
       })
@@ -434,7 +400,6 @@ export default function CreerDevisPage() {
     }
   }
 
-  // Generate and save quote
   const handleGenerateQuote = async () => {
     if (!userId) {
       showAlert("destructive", "Erreur d'authentification", "ID utilisateur introuvable. Veuillez vous reconnecter.")
