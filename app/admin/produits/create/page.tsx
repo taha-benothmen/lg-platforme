@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, XCircle } from "lucide-react"
+import { CheckCircle2, XCircle, Trash2 } from "lucide-react"
 
 export default function CreateProductPage() {
   const router = useRouter()
@@ -39,6 +39,7 @@ export default function CreateProductPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null)
 
   // Charger les catégories depuis l'API
   useEffect(() => {
@@ -118,6 +119,45 @@ export default function CreateProductPage() {
         setError(err.message || "Erreur lors de la création de la catégorie")
         setSuccessMessage("")
       }
+    }
+  }
+
+  const handleDeleteCategory = async (e: React.MouseEvent, categoryId: number, categoryName: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer la catégorie "${categoryName}"?`)) {
+      return
+    }
+
+    setDeletingCategoryId(categoryId)
+    setError("")
+
+    try {
+      const response = await fetch(`/api/categories?id=${categoryId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to delete category")
+      }
+
+      // Supprimer de la liste locale
+      setCategories(categories.filter((cat) => cat.id !== categoryId))
+      
+      // Si la catégorie supprimée était sélectionnée, la désélectionner
+      if (form.category === categoryName) {
+        setForm({ ...form, category: "" })
+      }
+
+      setSuccessMessage("Catégorie supprimée avec succès!")
+      setTimeout(() => setSuccessMessage(""), 3000)
+    } catch (err: any) {
+      console.error("❌ Error deleting category:", err)
+      setError(err.message || "Erreur lors de la suppression de la catégorie")
+    } finally {
+      setDeletingCategoryId(null)
     }
   }
 
@@ -249,21 +289,29 @@ export default function CreateProductPage() {
               <div>
                 <Label htmlFor="category" className="mb-2 block">Catégorie</Label>
                 {!showNewCategory ? (
-                  <div className="flex gap-2">
-                    <Select onValueChange={handleCategoryChange} value={form.category} required>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Sélectionner une catégorie" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat: any) => (
-                          <SelectItem key={cat.id} value={cat.name}>
+                  <Select onValueChange={handleCategoryChange} value={form.category} required>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Sélectionner une catégorie" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((cat: any) => (
+                        <div key={cat.id} className="flex items-center justify-between px-2 py-1 group">
+                          <SelectItem value={cat.name} className="flex-1">
                             {cat.name}
                           </SelectItem>
-                        ))}
-                        <SelectItem value="new">➕ Créer une nouvelle catégorie</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                          <button
+                            onClick={(e) => handleDeleteCategory(e, cat.id, cat.name)}
+                            disabled={deletingCategoryId === cat.id}
+                            className="ml-2 p-1 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 disabled:opacity-50 transition"
+                            title="Supprimer cette catégorie"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <SelectItem value="new">➕ Créer une nouvelle catégorie</SelectItem>
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <div className="flex gap-2">
                     <Input
@@ -342,8 +390,6 @@ export default function CreateProductPage() {
                     </SelectContent>
                   </Select>
                 </div>
-
-
               </div>
 
               {/* Image Upload */}
@@ -353,8 +399,8 @@ export default function CreateProductPage() {
                   type="file"
                   id="image"
                   accept="image/*"
-                  onChange={handleFileChange}
                   className="mb-2 w-full rounded border border-gray-300 bg-gray-100 p-2 cursor-pointer"
+                  onChange={handleFileChange}
                   required
                 />
                 {imagePreview && (
