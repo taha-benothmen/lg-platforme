@@ -6,6 +6,7 @@ export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json();
 
+
     if (!email || !password) {
       return NextResponse.json(
         { error: "Email and password are required" },
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
+
     if (!user || !user.isActive) {
       return NextResponse.json(
         { error: "Invalid credentials" },
@@ -33,7 +35,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    // Check if password is hashed or plain text
+    let isValidPassword = false;
+    if (user.password.startsWith('$2')) {
+      // Password is hashed with bcrypt
+      isValidPassword = await bcrypt.compare(password, user.password);
+    } else {
+      // Password is plain text (NOT SECURE - fix this!)
+      isValidPassword = password === user.password;
+      console.warn("WARNING: Password not hashed for user:", user.email);
+    }
 
     if (!isValidPassword) {
       return NextResponse.json(
@@ -54,7 +65,7 @@ export async function POST(request: NextRequest) {
       role: user.role,
       firstName: user.firstName,
       lastName: user.lastName,
-      route: routeMap[user.role],
+      route: routeMap[user.role as keyof typeof routeMap],
     };
 
     const response = NextResponse.json({

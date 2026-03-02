@@ -17,6 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { CheckCircle2, XCircle, Trash2 } from "lucide-react"
 
 export default function CreateProductPage() {
   const router = useRouter()
@@ -25,19 +27,20 @@ export default function CreateProductPage() {
     description: "",
     price: "",
     currency: "TND",
-    stock: "",
-    image: "",
+    stock: "DISPONIBLE",
     category: "",
   })
 
+  const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [newCategory, setNewCategory] = useState("")
   const [categories, setCategories] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [successMessage, setSuccessMessage] = useState("")
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null)
 
-  // Charger les catégories depuis l'API
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -60,7 +63,7 @@ export default function CreateProductPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      setForm({ ...form, image: file.name })
+      setImageFile(file)
       setImagePreview(URL.createObjectURL(file))
     }
   }
@@ -75,11 +78,71 @@ export default function CreateProductPage() {
     }
   }
 
-  const handleAddNewCategory = () => {
+  const handleAddNewCategory = async () => {
     if (newCategory.trim()) {
-      setForm({ ...form, category: newCategory })
-      setShowNewCategory(false)
-      setNewCategory("")
+      try {
+        const response = await fetch("/api/categories", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: newCategory.trim() }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to create category")
+        }
+
+        const createdCategory = await response.json()
+        setCategories([...categories, createdCategory])
+        setForm({ ...form, category: createdCategory.name })
+        setShowNewCategory(false)
+        setNewCategory("")
+        setSuccessMessage("Catégorie créée avec succès!")
+        setError("")
+        setTimeout(() => setSuccessMessage(""), 3000)
+      } catch (err: any) {
+        console.error("Error creating category:", err)
+        setError(err.message || "Erreur lors de la création de la catégorie")
+        setSuccessMessage("")
+      }
+    }
+  }
+
+  const handleDeleteCategory = async (e: React.MouseEvent, categoryId: number, categoryName: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer la catégorie "${categoryName}"?`)) {
+      return
+    }
+
+    setDeletingCategoryId(categoryId)
+    setError("")
+
+    try {
+      const response = await fetch(`/api/categories?id=${categoryId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to delete category")
+      }
+
+      setCategories(categories.filter((cat) => cat.id !== categoryId))
+            if (form.category === categoryName) {
+        setForm({ ...form, category: "" })
+      }
+
+      setSuccessMessage("Catégorie supprimée avec succès!")
+      setTimeout(() => setSuccessMessage(""), 3000)
+    } catch (err: any) {
+      console.error("Error deleting category:", err)
+      setError(err.message || "Erreur lors de la suppression de la catégorie")
+    } finally {
+      setDeletingCategoryId(null)
     }
   }
 
@@ -87,38 +150,39 @@ export default function CreateProductPage() {
     e.preventDefault()
     setLoading(true)
     setError("")
-
+    setSuccessMessage("")
+    console.log("FormData entries:")
+    for (const pair of Object.entries(form)) {
+      console.log(pair[0], pair[1])
+    }
+    
     try {
-      // Préparer les données
-      const productData: any = {
-        name: form.name,
-        description: form.description,
-        price: form.price,
-        currency: form.currency,
-        stock: form.stock,
-        image: form.image,
+      if (!form.name || !form.price || !form.stock || !form.category) {
+        throw new Error("Veuillez remplir tous les champs obligatoires")
       }
 
-      // Si c'est une nouvelle catégorie, utiliser categoryName, sinon categoryId
-      if (showNewCategory && newCategory) {
-        productData.categoryName = newCategory
-      } else if (form.category) {
-        // Trouver l'ID de la catégorie sélectionnée
-        const selectedCategory = categories.find((cat) => cat.name === form.category)
-        if (selectedCategory) {
-          productData.categoryId = selectedCategory.id
-        } else {
-          // Si la catégorie n'est pas trouvée, utiliser le nom
-          productData.categoryName = form.category
-        }
+      if (!imageFile) {
+        throw new Error("Veuillez sélectionner une image")
       }
+      const formData = new FormData()
+      formData.append("name", form.name)
+      formData.append("description", form.description)
+      formData.append("price", form.price)
+      formData.append("currency", form.currency)
+      formData.append("stock", form.stock)
+      formData.append("image", imageFile)
+
+      const selectedCategory = categories.find((cat) => cat.name === form.category)
+      if (selectedCategory) {
+        formData.append("categoryId", selectedCategory.id.toString())
+      } else {
+        formData.append("categoryName", form.category)
+      }
+
 
       const response = await fetch("/api/products", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(productData),
+        body: formData, // Envoyer FormData directement
       })
 
       if (!response.ok) {
@@ -127,10 +191,12 @@ export default function CreateProductPage() {
       }
 
       const createdProduct = await response.json()
-      console.log("Product created:", createdProduct)
-      
-      // Rediriger vers la liste des produits
-      router.push("/admin/produits")
+
+      setSuccessMessage("Produit créé avec succès! Redirection...")
+      setError("")
+      setTimeout(() => {
+        router.push("/admin/produits")
+      }, 2000)
     } catch (err: any) {
       console.error("Error creating product:", err)
       setError(err.message || "Erreur lors de la création du produit")
@@ -153,11 +219,28 @@ export default function CreateProductPage() {
         <SidebarInset className="flex-1 flex flex-col overflow-hidden">
           <SiteHeader />
           <div className="flex-1 overflow-y-auto px-6 py-6 lg:px-8 flex justify-center items-start">
-            <form
-              onSubmit={handleSubmit}
-              className="space-y-6 w-full max-w-2xl bg-white p-6 rounded shadow"
-            >
+            <div className="space-y-6 w-full max-w-2xl bg-white p-6 rounded shadow">
               <h1 className="text-2xl font-bold mb-6 text-center">Créer un produit</h1>
+
+              {/* Success Alert */}
+              {successMessage && (
+                <Alert className="bg-green-50 border-green-200">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800">
+                    {successMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Error Alert */}
+              {error && (
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {error}
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Product Name */}
               <div>
@@ -182,21 +265,29 @@ export default function CreateProductPage() {
               <div>
                 <Label htmlFor="category" className="mb-2 block">Catégorie</Label>
                 {!showNewCategory ? (
-                  <div className="flex gap-2">
-                    <Select onValueChange={handleCategoryChange} value={form.category} required>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Sélectionner une catégorie" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat: any) => (
-                          <SelectItem key={cat.id} value={cat.name}>
+                  <Select onValueChange={handleCategoryChange} value={form.category} required>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Sélectionner une catégorie" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((cat: any) => (
+                        <div key={cat.id} className="flex items-center justify-between px-2 py-1 group">
+                          <SelectItem value={cat.name} className="flex-1">
                             {cat.name}
                           </SelectItem>
-                        ))}
-                        <SelectItem value="new">➕ Créer une nouvelle catégorie</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                          <button
+                            onClick={(e) => handleDeleteCategory(e, cat.id, cat.name)}
+                            disabled={deletingCategoryId === cat.id}
+                            className="ml-2 p-1 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 disabled:opacity-50 transition"
+                            title="Supprimer cette catégorie"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <SelectItem value="new">➕ Créer une nouvelle catégorie</SelectItem>
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <div className="flex gap-2">
                     <Input
@@ -208,9 +299,9 @@ export default function CreateProductPage() {
                     <Button type="button" onClick={handleAddNewCategory} size="sm">
                       Ajouter
                     </Button>
-                    <Button 
-                      type="button" 
-                      variant="outline" 
+                    <Button
+                      type="button"
+                      variant="outline"
                       onClick={() => setShowNewCategory(false)}
                       size="sm"
                     >
@@ -239,13 +330,12 @@ export default function CreateProductPage() {
                 <div>
                   <Label htmlFor="price" className="mb-2 block">Prix</Label>
                   <div className="flex">
-                    <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-input bg-gray-100 text-gray-700">
-                      💲
-                    </span>
+                    
                     <Input
                       id="price"
                       name="price"
                       type="number"
+                      step="0.01"
                       value={form.price}
                       onChange={handleChange}
                       placeholder="Prix"
@@ -258,52 +348,47 @@ export default function CreateProductPage() {
                   </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="stock" className="mb-2 block">Stock</Label>
-                  <div className="flex">
-                    <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-input bg-gray-100 text-gray-700">
-                      📦
-                    </span>
-                    <Input
-                      id="stock"
-                      name="stock"
-                      type="number"
-                      value={form.stock}
-                      onChange={handleChange}
-                      placeholder="Stock disponible"
-                      className="rounded-r-md flex-1"
-                      required
-                    />
-                  </div>
+                <div >
+                  <Label htmlFor="stock" className="mb-2 block">Stock 📦</Label>
+                  <Select
+                    value={form.stock}
+                    onValueChange={(value) => setForm({ ...form, stock: value })}
+                    required
+                  >
+                    <SelectTrigger className="flex">
+                      <SelectValue placeholder="Sélectionner le stock" className="flex-1 rounded-r-md" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DISPONIBLE">DISPONIBLE</SelectItem>
+                      <SelectItem value="HORS_STOCK">HORS_STOCK</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               {/* Image Upload */}
               <div>
-                <Label htmlFor="image" className="mb-2 block">Photo du produit</Label>
+                <Label htmlFor="image" className="mb-2 block">Photo du produit *</Label>
                 <input
                   type="file"
                   id="image"
                   accept="image/*"
-                  onChange={handleFileChange}
                   className="mb-2 w-full rounded border border-gray-300 bg-gray-100 p-2 cursor-pointer"
+                  onChange={handleFileChange}
                   required
                 />
                 {imagePreview && (
-                  <img src={imagePreview} alt="Preview" className="mt-2 max-h-64 object-contain border rounded" />
+                  <div className="mt-2">
+                    <img src={imagePreview} alt="Preview" className="max-h-64 object-contain border rounded" />
+                    <p className="text-sm text-gray-600 mt-2">Image sélectionnée: {imageFile?.name}</p>
+                  </div>
                 )}
               </div>
 
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                  {error}
-                </div>
-              )}
-
-              <Button type="submit" className="mt-4 w-full" disabled={loading}>
+              <Button onClick={handleSubmit} className="mt-4 w-full" disabled={loading}>
                 {loading ? "Création en cours..." : "Créer le produit"}
               </Button>
-            </form>
+            </div>
           </div>
         </SidebarInset>
       </div>

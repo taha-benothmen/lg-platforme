@@ -27,7 +27,7 @@ export async function createDevis(data: {
         clientAddr: data.clientAddr,
         createdById: data.createdById,
         total,
-        status: DevisStatus.BROUILLON,
+        status: DevisStatus.EN_ATTENTE,
         items: {
           create: data.items.map((item) => ({
             productId: item.productId,

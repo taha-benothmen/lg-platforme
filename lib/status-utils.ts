@@ -5,7 +5,7 @@ export function getStatusBadgeVariant(status: DevisStatus | string): "success" |
     APPROUVE: "success",
     ACCEPTE: "success",
     ENVOYE: "warning",
-    BROUILLON: "outline",
+    EN_ATTENTE: "outline",
     SUSPENDU: "secondary",
     REJETE: "rose",
   };
@@ -15,7 +15,7 @@ export function getStatusBadgeVariant(status: DevisStatus | string): "success" |
 
 export function getStatusLabel(status: DevisStatus | string): string {
   const labelMap: Record<string, string> = {
-    BROUILLON: "Brouillon",
+    EN_ATTENTE: "EN_ATTENTE",
     ENVOYE: "Envoyé",
     APPROUVE: "Approuvé",
     SUSPENDU: "Suspendu",

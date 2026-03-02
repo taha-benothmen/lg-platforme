@@ -26,6 +26,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     setError("")
 
     try {
+      
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -38,20 +39,65 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
 
       if (!response.ok) {
         setError(data.error || "Login failed")
+        setLoading(false)
         return
       }
 
-      // Save session in localStorage
+      if (!data.user) {
+        console.error("ERREUR: data.user est undefined!")
+        setError("Invalid server response: missing user data")
+        setLoading(false)
+        return
+      }
+
+      const userSession = {
+        id: data.user.id || data.user.userId,
+        email: data.user.email,
+        role: data.user.role,
+        route: data.user.route,
+        name: data.user.name || data.user.firstName,
+      }
+      
+      localStorage.setItem("userSession", JSON.stringify(userSession))
+      localStorage.setItem("userId", data.user.id || data.user.userId)
+      localStorage.setItem("userRole", data.user.role || "")
+      localStorage.setItem("userEmail", data.user.email || "")
+
+
+      // IMPORTANT: Sauvegarder les cookies pour le middleware
+      // Le middleware cherche 'lg_user_role' dans les cookies
+      const role = data.user.role
+
+      // Créer les cookies manuellement (car on ne peut pas accéder à res en client)
+      // On va faire un appel à l'API pour setter les cookies
+      await fetch("/api/auth/set-cookies", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: data.user.id || data.user.userId,
+          role: role,
+          email: data.user.email,
+        }),
+      })
+
+
+      // Save session in authUtils
       authUtils.setSession({
         email: data.user.email,
         role: data.user.role,
         route: data.user.route,
       })
 
-      router.push(data.user.route)
+      
+      // Redirect after a short delay to ensure cookies are set
+      setTimeout(() => {
+        router.push(data.user.route)
+      }, 100)
     } catch (err) {
       setError("An error occurred. Please try again.")
-    } finally {
+      console.error("Erreur:", err)
       setLoading(false)
     }
   }
@@ -60,7 +106,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
-          {/* Attach handleSubmit here */}
           <form onSubmit={handleSubmit} className="p-6 md:p-8">
             <FieldGroup>
               <div className="flex flex-col items-center gap-2 text-center">
@@ -79,6 +124,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
                 />
               </Field>
 
@@ -98,6 +144,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
                 />
               </Field>
 
@@ -110,12 +157,9 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   {loading ? "Logging in..." : "Login"}
                 </Button>
               </Field>
-
-              
             </FieldGroup>
           </form>
 
-          {/* Image side remains unchanged */}
           <div className="bg-muted relative hidden md:block flex items-center justify-center">
             <img
               src="/lg.png"
@@ -125,8 +169,6 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
           </div>
         </CardContent>
       </Card>
-
-      
     </div>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
@@ -13,9 +14,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { menusByRole } from "@/lib/data/menus"
-import productsData from "../../produits/products.json"
-import { FileText, ShoppingCart, Download, Share2, ArrowLeft } from "lucide-react"
+import { FileText, ShoppingCart, Download, Share2, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Info, X } from "lucide-react"
 
 type CartItem = {
   id: number
@@ -23,9 +24,9 @@ type CartItem = {
   description: string
   price: number
   currency: string
-  category: string
+  category?: { id: number; name: string }
   stock: number
-  image: string
+  image?: string
   quantity: number
 }
 
@@ -41,9 +42,29 @@ type ClientInfo = {
   notes: string
 }
 
+type AlertType = {
+  show: boolean
+  type: "default" | "destructive" | "success"
+  title: string
+  description: string
+}
+
 export default function CreerDevisPage() {
+  const router = useRouter()
+  
+  const [allProducts, setAllProducts] = useState<CartItem[]>([])
   const [selectedProducts, setSelectedProducts] = useState<Map<number, number>>(new Map())
   const [selectedCategory, setSelectedCategory] = useState<string>("Tous")
+  const [loading, setLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [categories, setCategories] = useState<any[]>([])
+  const [userId, setUserId] = useState<string>("")
+  const [alert, setAlert] = useState<AlertType>({
+    show: false,
+    type: "default",
+    title: "",
+    description: ""
+  })
   const [clientInfo, setClientInfo] = useState<ClientInfo>({
     nom: "",
     prenom: "",
@@ -56,30 +77,75 @@ export default function CreerDevisPage() {
     notes: ""
   })
 
-  // Charger le panier depuis localStorage au montage
+  const showAlert = (type: "default" | "destructive" | "success", title: string, description: string) => {
+    setAlert({ show: true, type, title, description })
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      setAlert(prev => ({ ...prev, show: false }))
+    }, 5000)
+  }
+
+  // Load user ID and data on mount
   useEffect(() => {
-    const cartData = localStorage.getItem("cart")
-    if (cartData) {
+    async function loadData() {
       try {
-        const cart: CartItem[] = JSON.parse(cartData)
-        const productMap = new Map<number, number>()
-        cart.forEach(item => {
-          productMap.set(item.id, item.quantity)
-        })
-        setSelectedProducts(productMap)
+        // Get userId from localStorage or your auth system
+        let currentUserId = localStorage.getItem("userId")
+        
+        if (!currentUserId) {
+          // Try to get from sessionStorage as fallback
+          currentUserId = sessionStorage.getItem("userId")
+        }
+
+        if (!currentUserId) {
+          showAlert("destructive", "Erreur d'authentification", "ID utilisateur introuvable. Veuillez vous reconnecter.")
+          setTimeout(() => router.push("/login"), 2000)
+          return
+        }
+
+        setUserId(currentUserId)
+
+        // Load all products
+        const productsResponse = await fetch('/api/products')
+        const productsData = await productsResponse.json()
+        setAllProducts(productsData || [])
+
+        // Load categories
+        const categoriesResponse = await fetch('/api/categories')
+        const categoriesData = await categoriesResponse.json()
+        setCategories(categoriesData || [])
+
+        // Load cart from localStorage
+        const cartData = localStorage.getItem("cart")
+        if (cartData) {
+          try {
+            const cart: CartItem[] = JSON.parse(cartData)
+            const productMap = new Map<number, number>()
+            cart.forEach(item => {
+              productMap.set(item.id, item.quantity)
+            })
+            setSelectedProducts(productMap)
+          } catch (error) {
+            console.error("Error loading cart:", error)
+          }
+        }
       } catch (error) {
-        console.error("Erreur lors du chargement du panier:", error)
+        console.error("Error loading data:", error)
+      } finally {
+        setLoading(false)
       }
     }
-  }, [])
 
-  // Filtrer les produits par catégorie
+    loadData()
+  }, [router])
+
+  // Filter products by category
   const filteredProducts =
     selectedCategory === "Tous"
-      ? productsData.products
-      : productsData.products.filter((p: any) => p.category === selectedCategory)
+      ? allProducts
+      : allProducts.filter((p) => p.category?.name === selectedCategory)
 
-  // Gérer la sélection/désélection d'un produit
+  // Handle product selection/deselection
   const handleProductToggle = (productId: number, isChecked: boolean) => {
     setSelectedProducts(prev => {
       const newMap = new Map(prev)
@@ -92,7 +158,7 @@ export default function CreerDevisPage() {
     })
   }
 
-  // Modifier la quantité d'un produit
+  // Change product quantity
   const handleQuantityChange = (productId: number, quantity: number) => {
     if (quantity <= 0) return
     setSelectedProducts(prev => {
@@ -102,11 +168,11 @@ export default function CreerDevisPage() {
     })
   }
 
-  // Calculer le total
+  // Calculate total
   const calculateTotal = () => {
     let total = 0
     selectedProducts.forEach((quantity, productId) => {
-      const product = productsData.products.find((p: any) => p.id === productId)
+      const product = allProducts.find((p) => p.id === productId)
       if (product) {
         total += product.price * quantity
       }
@@ -114,7 +180,7 @@ export default function CreerDevisPage() {
     return total
   }
 
-  // Calculer le nombre total d'articles
+  // Get total items count
   const getTotalItems = () => {
     let total = 0
     selectedProducts.forEach(quantity => {
@@ -123,7 +189,7 @@ export default function CreerDevisPage() {
     return total
   }
 
-  // Gérer les changements dans les informations client
+  // Handle client info changes
   const handleClientInfoChange = (field: keyof ClientInfo, value: string) => {
     setClientInfo(prev => ({
       ...prev,
@@ -131,7 +197,7 @@ export default function CreerDevisPage() {
     }))
   }
 
-  // Valider le formulaire
+  // Validate form
   const isFormValid = () => {
     return (
       clientInfo.nom.trim() !== "" &&
@@ -139,21 +205,22 @@ export default function CreerDevisPage() {
       clientInfo.email.trim() !== "" &&
       clientInfo.telephone.trim() !== "" &&
       clientInfo.adresse.trim() !== "" &&
+      clientInfo.ville.trim() !== "" &&
       selectedProducts.size > 0
     )
   }
 
-  // Générer le devis PDF (simulation)
+  // Download PDF
   const handleDownloadPDF = () => {
     if (!isFormValid()) {
-      alert("Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
+      showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
       return
     }
 
     const quoteData = {
       client: clientInfo,
       products: Array.from(selectedProducts.entries()).map(([id, quantity]) => {
-        const product = productsData.products.find((p: any) => p.id === id)
+        const product = allProducts.find((p) => p.id === id)
         return {
           ...product,
           quantity
@@ -163,17 +230,14 @@ export default function CreerDevisPage() {
       date: new Date().toISOString()
     }
 
-    console.log("Devis généré:", quoteData)
-    alert("Téléchargement du PDF en cours...")
-    
-    // Ici vous pouvez intégrer une bibliothèque comme jsPDF ou pdfmake
-    // pour générer un vrai PDF
+    console.log("Quote data for PDF:", quoteData)
+    showAlert("default", "Téléchargement PDF", "Le téléchargement du PDF est en cours...")
   }
 
-  // Partager le devis
+  // Share quote
   const handleShareQuote = () => {
     if (!isFormValid()) {
-      alert("Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
+      showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
       return
     }
 
@@ -184,40 +248,110 @@ export default function CreerDevisPage() {
         title: 'Devis',
         text: shareText,
       }).then(() => {
-        console.log('Devis partagé avec succès')
+        console.log('Quote shared successfully')
       }).catch((error) => {
-        console.error('Erreur lors du partage:', error)
+        console.error('Error sharing quote:', error)
       })
     } else {
-      // Fallback: copier dans le presse-papier
       navigator.clipboard.writeText(shareText)
-      alert("Lien du devis copié dans le presse-papier!")
+      showAlert("success", "Lien copié", "Le lien du devis a été copié dans le presse-papiers!")
     }
   }
 
-  // Générer le devis et sauvegarder
-  const handleGenerateQuote = () => {
+  // Generate and save quote
+  const handleGenerateQuote = async () => {
+    // Check userId
+    if (!userId) {
+      showAlert("destructive", "Erreur d'authentification", "ID utilisateur introuvable. Veuillez vous reconnecter.")
+      setTimeout(() => router.push("/login"), 2000)
+      return
+    }
+
+    setIsSubmitting(true)
+
     if (!isFormValid()) {
-      alert("Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
+      showAlert("destructive", "Formulaire incomplet", "Veuillez remplir tous les champs obligatoires et sélectionner au moins un produit")
+      setIsSubmitting(false)
       return
     }
 
     const quoteData = {
+      userId: userId,
       client: clientInfo,
       products: Array.from(selectedProducts.entries()).map(([id, quantity]) => {
-        const product = productsData.products.find((p: any) => p.id === id)
+        const product = allProducts.find((p) => p.id === id)
         return {
-          ...product,
+          id: product?.id,
+          name: product?.name,
+          description: product?.description,
+          price: product?.price,
+          currency: product?.currency,
+          stock: product?.stock,
+          image: product?.image,
+          category: product?.category,
           quantity
         }
       }),
       total: calculateTotal(),
-      date: new Date().toISOString()
     }
 
-    console.log("Devis généré:", quoteData)
-    alert("Devis créé avec succès!")
-    localStorage.removeItem("cart")
+    try {
+      console.log("Sending quote data:", quoteData)
+
+      const response = await fetch('/api/devis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(quoteData),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        console.error("API error response:", result)
+        showAlert("destructive", "Erreur", result.error || 'Erreur inconnue lors de la création du devis')
+        setIsSubmitting(false)
+        return
+      }
+
+      // Success
+      showAlert("success", "Succès", `Devis créé avec succès! Nom du client: ${result.data.clientName} - Total: ${result.data.total} TND`)
+      localStorage.removeItem("cart")
+      
+      // Redirect after 2 seconds
+      setTimeout(() => {
+        router.push('/etablissement/devis')
+      }, 2000)
+    } catch (error) {
+      console.error('Error creating quote:', error)
+      showAlert("destructive", "Erreur", "Une erreur est survenue lors de la création du devis")
+      setIsSubmitting(false)
+    }
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "calc(var(--spacing) * 72)",
+            "--header-height": "calc(var(--spacing) * 12)",
+          } as React.CSSProperties
+        }
+      >
+        <div className="flex h-screen w-screen">
+          <AppSidebar menu={menusByRole.etablissement} />
+          <SidebarInset className="flex-1 flex flex-col overflow-hidden">
+            <SiteHeader />
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-muted-foreground">Chargement...</p>
+            </div>
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
+    )
   }
 
   return (
@@ -236,13 +370,34 @@ export default function CreerDevisPage() {
           <SiteHeader />
 
           <div className="flex-1 overflow-y-auto px-6 py-4 lg:px-8">
+            {/* Alert notification */}
+            {alert.show && (
+              <div className="fixed top-4 right-4 z-50 w-96 animate-in slide-in-from-top-2">
+                <Alert variant={alert.type === "success" ? "default" : alert.type} className="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-2 h-6 w-6"
+                    onClick={() => setAlert(prev => ({ ...prev, show: false }))}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                  {alert.type === "destructive" && <AlertCircle className="h-4 w-4" />}
+                  {alert.type === "success" && <CheckCircle2 className="h-4 w-4" />}
+                  {alert.type === "default" && <Info className="h-4 w-4" />}
+                  <AlertTitle>{alert.title}</AlertTitle>
+                  <AlertDescription>{alert.description}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => window.history.back()}
+                  onClick={() => router.back()}
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -274,7 +429,7 @@ export default function CreerDevisPage() {
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">
-              {/* Colonne gauche - Sélection des produits */}
+              {/* Left column - Product selection */}
               <div className="lg:col-span-2 space-y-4">
                 <Card>
                   <CardHeader>
@@ -284,7 +439,7 @@ export default function CreerDevisPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Filtres par catégorie */}
+                    {/* Category filters */}
                     <div className="flex flex-wrap gap-2 pb-4 border-b">
                       <Button
                         variant={selectedCategory === "Tous" ? "default" : "outline"}
@@ -293,7 +448,7 @@ export default function CreerDevisPage() {
                       >
                         Tous
                       </Button>
-                      {productsData.categories.map((cat: any) => (
+                      {categories.map((cat) => (
                         <Button
                           key={cat.id}
                           variant={
@@ -307,10 +462,10 @@ export default function CreerDevisPage() {
                       ))}
                     </div>
 
-                    {/* Liste des produits filtrés */}
+                    {/* Filtered products list */}
                     <div className="space-y-3">
                       {filteredProducts.length > 0 ? (
-                        filteredProducts.map((product: any) => {
+                        filteredProducts.map((product) => {
                           const isSelected = selectedProducts.has(product.id)
                           const quantity = selectedProducts.get(product.id) || 1
 
@@ -329,13 +484,16 @@ export default function CreerDevisPage() {
                                 className="mt-1"
                               />
                               
-                              <Image
-                                src={product.image}
-                                alt={product.name}
-                                width={80}
-                                height={80}
-                                className="object-cover rounded"
-                              />
+                              {product.image && (
+                                <div className="relative h-20 w-20 flex-shrink-0">
+                                  <Image
+                                    src={product.image}
+                                    alt={product.name}
+                                    fill
+                                    className="object-cover rounded"
+                                  />
+                                </div>
+                              )}
 
                               <div className="flex-1 min-w-0">
                                 <h3 className="font-semibold mb-1">{product.name}</h3>
@@ -343,7 +501,9 @@ export default function CreerDevisPage() {
                                   {product.description}
                                 </p>
                                 <div className="flex items-center gap-4">
-                                  <Badge variant="outline">{product.category}</Badge>
+                                  <Badge variant="outline">
+                                    {product.category?.name || "Catégorie"}
+                                  </Badge>
                                   <span className="text-sm text-muted-foreground">
                                     Stock: {product.stock}
                                   </span>
@@ -352,7 +512,7 @@ export default function CreerDevisPage() {
 
                               <div className="text-right space-y-2">
                                 <p className="font-bold text-lg">
-                                  {product.price} {product.currency}
+                                  {product.price.toFixed(2)} {product.currency}
                                 </p>
                                 
                                 {isSelected && (
@@ -416,9 +576,9 @@ export default function CreerDevisPage() {
                 </Card>
               </div>
 
-              {/* Colonne droite - Informations client et récapitulatif */}
+              {/* Right column - Client info and summary */}
               <div className="space-y-4">
-                {/* Informations client */}
+                {/* Client information */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Informations client</CardTitle>
@@ -498,7 +658,7 @@ export default function CreerDevisPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="ville">Ville</Label>
+                        <Label htmlFor="ville">Ville *</Label>
                         <Input
                           id="ville"
                           value={clientInfo.ville}
@@ -521,7 +681,7 @@ export default function CreerDevisPage() {
                   </CardContent>
                 </Card>
 
-                {/* Récapitulatif */}
+                {/* Summary */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Récapitulatif</CardTitle>
@@ -529,7 +689,7 @@ export default function CreerDevisPage() {
                   <CardContent className="space-y-3">
                     <div className="space-y-2">
                       {Array.from(selectedProducts.entries()).map(([productId, quantity]) => {
-                        const product = productsData.products.find((p: any) => p.id === productId)
+                        const product = allProducts.find((p) => p.id === productId)
                         if (!product) return null
 
                         return (
@@ -559,15 +719,25 @@ export default function CreerDevisPage() {
                       <Button
                         className="w-full"
                         onClick={handleGenerateQuote}
-                        disabled={!isFormValid()}
+                        disabled={!isFormValid() || isSubmitting}
                       >
-                        <FileText className="h-4 w-4 mr-2" />
-                        Générer le devis
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Création en cours...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="h-4 w-4 mr-2" />
+                            Générer le devis
+                          </>
+                        )}
                       </Button>
                       <Button
                         variant="outline"
                         className="w-full"
-                        onClick={() => window.history.back()}
+                        onClick={() => router.back()}
+                        disabled={isSubmitting}
                       >
                         Retour aux produits
                       </Button>
