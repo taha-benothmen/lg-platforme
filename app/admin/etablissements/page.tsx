@@ -19,8 +19,7 @@ import { menusByRole } from "@/lib/data/menus"
 import { CreateUserDialog } from "./create/page"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Trash2, CheckCircle2, AlertCircle, X, Loader2, Edit2, ChevronLeft, ChevronRight } from "lucide-react"
-
+import { Trash2, CheckCircle2, AlertCircle, X, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
 
 type UserRole = "ADMIN" | "RESPONSABLE" | "ETABLISSEMENT"
 
@@ -48,9 +47,7 @@ interface AlertMessage {
   message: string
 }
 
-
 const ITEMS_PER_PAGE = 20
-
 
 function getRoleLabel(role: UserRole) {
   const labels: Record<UserRole, string> = {
@@ -70,6 +67,67 @@ function getRoleColor(role: UserRole) {
   return colors[role]
 }
 
+// ─── Mobile user card ─────────────────────────────────────────────────────────
+
+function UserCard({
+  user,
+  etablissementBreadcrumb,
+  onDelete,
+  isDeleting,
+}: {
+  user: User
+  etablissementBreadcrumb: string
+  onDelete: (id: string) => void
+  isDeleting: boolean
+}) {
+  const fullName =
+    user.firstName && user.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user.email
+
+  return (
+    <div className="bg-white border rounded-xl p-4 space-y-3">
+      {/* Top row: name + role badge */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-900 truncate">{fullName}</p>
+          <p className="text-xs text-gray-500 truncate mt-0.5">{user.email}</p>
+        </div>
+        <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${getRoleColor(user.role)}`}>
+          {getRoleLabel(user.role)}
+        </span>
+      </div>
+
+      {/* Details */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <span className="text-gray-400 text-xs uppercase tracking-wide font-medium">Téléphone</span>
+        <span className="text-gray-400 text-xs uppercase tracking-wide font-medium">Établissement</span>
+        <span className="text-gray-700 truncate">{user.phone || "—"}</span>
+        <span className="text-gray-600 truncate text-xs">{etablissementBreadcrumb}</span>
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end pt-1">
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={() => onDelete(user.id)}
+          disabled={isDeleting}
+          className="gap-1.5"
+        >
+          {isDeleting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+          Supprimer
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function UtilisateursPage() {
   const [users, setUsers] = useState<User[]>([])
@@ -78,7 +136,7 @@ export default function UtilisateursPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [alertMessage, setAlertMessage] = useState<AlertMessage | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  
+
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalUsers, setTotalUsers] = useState(0)
@@ -97,356 +155,276 @@ export default function UtilisateursPage() {
 
   const fetchEtablissements = async () => {
     try {
-      const etabResponse = await fetch("/api/etablissements")
-      if (!etabResponse.ok) throw new Error("Erreur lors du chargement des établissements")
-      const etabData = await etabResponse.json()
-      setEtablissements(etabData)
-    } catch (error) {
-      console.error("Erreur:", error)
-      setAlertMessage({
-        type: "error",
-        title: "Erreur",
-        message: "Erreur lors du chargement des établissements",
-      })
+      const res = await fetch("/api/etablissements")
+      if (!res.ok) throw new Error()
+      setEtablissements(await res.json())
+    } catch {
+      setAlertMessage({ type: "error", title: "Erreur", message: "Erreur lors du chargement des établissements" })
     }
   }
 
   const fetchUsers = async (page: number = 1) => {
     try {
-      const isFirstPage = page === 1
-      isFirstPage ? setIsLoading(true) : setIsLoadingMore(true)
-      
-      const usersResponse = await fetch(
-        `/api/etablissements?type=users&page=${page}&limit=${ITEMS_PER_PAGE}`
-      )
-      if (!usersResponse.ok) throw new Error("Erreur lors du chargement des utilisateurs")
-      const usersData = await usersResponse.json()
-      
-      console.log(`Users: Page ${page}`, usersData)
-      
-      setUsers(usersData.data || [])
-      setTotalUsers(usersData.pagination?.total || 0)
-      setTotalPages(usersData.pagination?.totalPages || 1)
+      page === 1 ? setIsLoading(true) : setIsLoadingMore(true)
+      const res = await fetch(`/api/etablissements?type=users&page=${page}&limit=${ITEMS_PER_PAGE}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setUsers(data.data || [])
+      setTotalUsers(data.pagination?.total || 0)
+      setTotalPages(data.pagination?.totalPages || 1)
       setCurrentPage(page)
-    } catch (error) {
-      console.error("Erreur:", error)
-      setAlertMessage({
-        type: "error",
-        title: "Erreur",
-        message: "Erreur lors du chargement des utilisateurs",
-      })
+    } catch {
+      setAlertMessage({ type: "error", title: "Erreur", message: "Erreur lors du chargement des utilisateurs" })
     } finally {
       setIsLoading(false)
       setIsLoadingMore(false)
     }
   }
 
-  const getEtablissementName = (etabId: string | null) => {
-    if (!etabId) return "-"
-    const etab = etablissements.find((e) => e.id === etabId)
-    return etab?.name || "Unknown"
-  }
-
   const getEtablissementBreadcrumb = (etabId: string | null) => {
-    if (!etabId) return "-"
-
+    if (!etabId) return "—"
     const buildPath = (id: string): string[] => {
       const etab = etablissements.find((e) => e.id === id)
       if (!etab) return []
-
-      if (etab.parentId) {
-        return [...buildPath(etab.parentId), etab.name]
-      }
-      return [etab.name]
+      return etab.parentId ? [...buildPath(etab.parentId), etab.name] : [etab.name]
     }
-
-    const path = buildPath(etabId)
-    return path.join(" > ")
+    return buildPath(etabId).join(" > ")
   }
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur?")) {
-      return
-    }
-
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur?")) return
     setDeletingId(userId)
     try {
-      const response = await fetch(`/api/utilisateurs/${userId}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
+      const res = await fetch(`/api/utilisateurs/${userId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json()
         throw new Error(data.error || "Erreur de suppression")
       }
-
-      setUsers(users.filter((u) => u.id !== userId))
-      setAlertMessage({
-        type: "success",
-        title: "Succès",
-        message: "Utilisateur supprimé avec succès",
-      })
+      setAlertMessage({ type: "success", title: "Succès", message: "Utilisateur supprimé avec succès" })
       fetchUsers(currentPage)
     } catch (error) {
-      setAlertMessage({
-        type: "error",
-        title: "Erreur",
-        message: error instanceof Error ? error.message : "Erreur inconnue",
-      })
+      setAlertMessage({ type: "error", title: "Erreur", message: error instanceof Error ? error.message : "Erreur inconnue" })
     } finally {
       setDeletingId(null)
     }
   }
-  const goToPage = (page: number) => {
-    const pageNum = Math.max(1, Math.min(page, totalPages))
-    fetchUsers(pageNum)
-  }
 
-  if (isLoading) {
-    return (
-      <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
-            "--header-height": "calc(var(--spacing) * 12)",
-          } as React.CSSProperties
-        }
-      >
-        <div className="flex h-screen w-screen">
-          <AppSidebar menu={menusByRole.admin} />
-          <SidebarInset className="flex-1 flex flex-col overflow-hidden">
-            <SiteHeader />
-            <div className="flex-1 flex items-center justify-center gap-2">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <span>Chargement...</span>
-            </div>
-          </SidebarInset>
+  const goToPage = (page: number) => fetchUsers(Math.max(1, Math.min(page, totalPages)))
+
+  const sidebarStyle = {
+    "--sidebar-width": "calc(var(--spacing) * 72)",
+    "--header-height": "calc(var(--spacing) * 12)",
+  } as React.CSSProperties
+
+  if (isLoading) return (
+    <SidebarProvider style={sidebarStyle}>
+      <AppSidebar menu={menusByRole.admin} />
+      <SidebarInset className="flex flex-col overflow-hidden">
+        <SiteHeader />
+        <div className="flex flex-1 items-center justify-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span>Chargement...</span>
         </div>
-      </SidebarProvider>
-    )
-  }
+      </SidebarInset>
+    </SidebarProvider>
+  )
 
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "calc(var(--spacing) * 72)",
-          "--header-height": "calc(var(--spacing) * 12)",
-        } as React.CSSProperties
-      }
-    >
-      <div className="flex h-screen w-screen">
-        <AppSidebar menu={menusByRole.admin} />
+    <SidebarProvider style={sidebarStyle}>
+      <AppSidebar menu={menusByRole.admin} />
 
-        <SidebarInset className="flex-1 flex flex-col overflow-hidden">
-          <SiteHeader />
+      <SidebarInset className="flex flex-col overflow-hidden">
+        <SiteHeader />
 
-          <div className="flex-1 overflow-y-auto px-6 py-6 lg:px-8">
-            {/* Alert */}
-            {alertMessage && (
-              <div className="mb-4 animate-in fade-in slide-in-from-top-2">
-                <Alert
-                  variant={alertMessage.type === "success" ? "default" : "destructive"}
-                  className={
-                    alertMessage.type === "success" ? "bg-green-50 border-green-200" : ""
-                  }
-                >
-                  {alertMessage.type === "success" ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4" />
-                  )}
-                  <AlertTitle>{alertMessage.title}</AlertTitle>
-                  <AlertDescription>{alertMessage.message}</AlertDescription>
-                  <button
-                    onClick={() => setAlertMessage(null)}
-                    className="absolute top-4 right-4"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </Alert>
-              </div>
-            )}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-5">
 
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h1 className="text-3xl font-bold">Utilisateurs</h1>
-                <p className="text-gray-600 mt-1">
-                  Gérez les utilisateurs du système
-                </p>
-              </div>
-
-              {/* Dialog pour créer un utilisateur */}
-              <CreateUserDialog onUserCreated={() => fetchUsers(1)} />
+          {/* Alert */}
+          {alertMessage && (
+            <div className="mb-4 animate-in fade-in slide-in-from-top-2">
+              <Alert
+                variant={alertMessage.type === "success" ? "default" : "destructive"}
+                className={alertMessage.type === "success" ? "bg-green-50 border-green-200" : ""}
+              >
+                {alertMessage.type === "success"
+                  ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  : <AlertCircle className="h-4 w-4" />}
+                <AlertTitle>{alertMessage.title}</AlertTitle>
+                <AlertDescription>{alertMessage.message}</AlertDescription>
+                <button onClick={() => setAlertMessage(null)} className="absolute top-4 right-4">
+                  <X className="h-4 w-4" />
+                </button>
+              </Alert>
             </div>
+          )}
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                <div className="text-sm font-medium text-blue-600">Total</div>
-                <div className="text-2xl font-bold text-blue-900">{totalUsers}</div>
-              </div>
-              <div className="bg-red-50 rounded-lg p-4 border border-red-200">
-                <div className="text-sm font-medium text-red-600">Admins</div>
-                <div className="text-2xl font-bold text-red-900">
-                  {users.filter((u) => u.role === "ADMIN").length}
-                </div>
-              </div>
-              <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                <div className="text-sm font-medium text-green-600">Actifs</div>
-                <div className="text-2xl font-bold text-green-900">
-                  {users.filter((u) => u.isActive).length}
-                </div>
-              </div>
+          {/* Page header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold">Utilisateurs</h1>
+              <p className="text-gray-600 mt-1 text-sm">Gérez les utilisateurs du système</p>
             </div>
-
-            {/* Table */}
-            {users.length === 0 ? (
-              <div className="rounded-lg border bg-white overflow-hidden">
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">Aucun utilisateur</p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="rounded-lg border bg-white overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableCaption>
-                        Total: {totalUsers} utilisateurs
-                      </TableCaption>
-
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nom</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Téléphone</TableHead>
-                          <TableHead>Établissement</TableHead>
-                          <TableHead>Rôle</TableHead>
-                          <TableHead className="text-center">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-
-                      <TableBody>
-                        {users.map((user) => (
-                          <TableRow key={user.id}>
-                            <TableCell className="font-medium">
-                              {user.firstName && user.lastName
-                                ? `${user.firstName} ${user.lastName}`
-                                : user.email}
-                            </TableCell>
-                            <TableCell className="text-sm">{user.email}</TableCell>
-                            <TableCell className="text-sm">{user.phone || "-"}</TableCell>
-                            <TableCell className="text-sm">
-                              <span className="text-gray-600">
-                                {getEtablissementBreadcrumb(user.etablissementId)}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <span
-                                className={`px-3 py-1 rounded-full text-xs font-semibold ${getRoleColor(
-                                  user.role
-                                )}`}
-                              >
-                                {getRoleLabel(user.role)}
-                              </span>
-                            </TableCell>
-                           
-                            <TableCell className="text-center">
-                              <div className="flex gap-2 justify-center">
-                               
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => handleDeleteUser(user.id)}
-                                  disabled={deletingId === user.id}
-                                >
-                                  {deletingId === user.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-
-                {/* Pagination Controls */}
-                {totalPages > 1 && (
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-4 border-t">
-                    <div className="text-sm text-muted-foreground">
-                      Page {currentPage} sur {totalPages}
-                      {isLoadingMore && <Loader2 className="h-4 w-4 inline animate-spin ml-2" />}
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => goToPage(currentPage - 1)}
-                        disabled={currentPage === 1 || isLoadingMore}
-                        className="gap-2"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                        <span className="hidden sm:inline">Précédent</span>
-                      </Button>
-
-                      {/* Smart page numbers */}
-                      <div className="flex items-center gap-1">
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                          const showPage =
-                            page <= 2 ||
-                            page >= totalPages - 1 ||
-                            (page >= currentPage - 1 && page <= currentPage + 1)
-
-                          return (
-                            <div key={page}>
-                              {showPage ? (
-                                <Button
-                                  variant={currentPage === page ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => goToPage(page)}
-                                  disabled={isLoadingMore}
-                                  className="w-10"
-                                >
-                                  {page}
-                                </Button>
-                              ) : page === 3 ? (
-                                <span className="px-2 text-muted-foreground">...</span>
-                              ) : null}
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => goToPage(currentPage + 1)}
-                        disabled={currentPage === totalPages || isLoadingMore}
-                        className="gap-2"
-                      >
-                        <span className="hidden sm:inline">Suivant</span>
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    <div className="text-sm text-muted-foreground">
-                      {ITEMS_PER_PAGE} lignes/page
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            <CreateUserDialog onUserCreated={() => fetchUsers(1)} />
           </div>
-        </SidebarInset>
-      </div>
+
+          {/* Stats — 3 cols always, compact on mobile */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="bg-blue-50 rounded-xl p-3 sm:p-4 border border-blue-200">
+              <div className="text-xs sm:text-sm font-medium text-blue-600">Total</div>
+              <div className="text-xl sm:text-2xl font-bold text-blue-900">{totalUsers}</div>
+            </div>
+            <div className="bg-red-50 rounded-xl p-3 sm:p-4 border border-red-200">
+              <div className="text-xs sm:text-sm font-medium text-red-600">Admins</div>
+              <div className="text-xl sm:text-2xl font-bold text-red-900">
+                {users.filter((u) => u.role === "ADMIN").length}
+              </div>
+            </div>
+            <div className="bg-green-50 rounded-xl p-3 sm:p-4 border border-green-200">
+              <div className="text-xs sm:text-sm font-medium text-green-600">Actifs</div>
+              <div className="text-xl sm:text-2xl font-bold text-green-900">
+                {users.filter((u) => u.isActive).length}
+              </div>
+            </div>
+          </div>
+
+          {/* Content */}
+          {users.length === 0 ? (
+            <div className="rounded-xl border bg-white">
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Aucun utilisateur</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+
+              {/* ── Desktop table (hidden on mobile) ── */}
+              <div className="hidden md:block rounded-xl border bg-white overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableCaption>Total: {totalUsers} utilisateurs</TableCaption>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nom</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Téléphone</TableHead>
+                        <TableHead>Établissement</TableHead>
+                        <TableHead>Rôle</TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">
+                            {user.firstName && user.lastName
+                              ? `${user.firstName} ${user.lastName}`
+                              : user.email}
+                          </TableCell>
+                          <TableCell className="text-sm">{user.email}</TableCell>
+                          <TableCell className="text-sm">{user.phone || "—"}</TableCell>
+                          <TableCell className="text-sm text-gray-600">
+                            {getEtablissementBreadcrumb(user.etablissementId)}
+                          </TableCell>
+                          <TableCell>
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getRoleColor(user.role)}`}>
+                              {getRoleLabel(user.role)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleDeleteUser(user.id)}
+                              disabled={deletingId === user.id}
+                            >
+                              {deletingId === user.id
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <Trash2 className="h-4 w-4" />}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* ── Mobile cards (hidden on md+) ── */}
+              <div className="md:hidden space-y-3">
+                <p className="text-xs text-gray-400 text-right">Total: {totalUsers} utilisateurs</p>
+                {users.map((user) => (
+                  <UserCard
+                    key={user.id}
+                    user={user}
+                    etablissementBreadcrumb={getEtablissementBreadcrumb(user.etablissementId)}
+                    onDelete={handleDeleteUser}
+                    isDeleting={deletingId === user.id}
+                  />
+                ))}
+              </div>
+
+              {/* ── Pagination ── */}
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 py-3 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    Page {currentPage} sur {totalPages}
+                    {isLoadingMore && <Loader2 className="h-4 w-4 inline animate-spin ml-2" />}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                    <Button
+                      variant="outline" size="sm"
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage === 1 || isLoadingMore}
+                      className="gap-1"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline">Précédent</span>
+                    </Button>
+
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                      const show =
+                        page <= 2 ||
+                        page >= totalPages - 1 ||
+                        (page >= currentPage - 1 && page <= currentPage + 1)
+                      return (
+                        <div key={page}>
+                          {show ? (
+                            <Button
+                              variant={currentPage === page ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => goToPage(page)}
+                              disabled={isLoadingMore}
+                              className="w-9"
+                            >
+                              {page}
+                            </Button>
+                          ) : page === 3 ? (
+                            <span className="px-1 text-muted-foreground">…</span>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+
+                    <Button
+                      variant="outline" size="sm"
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage === totalPages || isLoadingMore}
+                      className="gap-1"
+                    >
+                      <span className="hidden sm:inline">Suivant</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="text-sm text-muted-foreground hidden sm:block">
+                    {ITEMS_PER_PAGE} lignes/page
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </SidebarInset>
     </SidebarProvider>
   )
 }

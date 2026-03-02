@@ -330,9 +330,7 @@ export default function CreateProductPage() {
                 <div>
                   <Label htmlFor="price" className="mb-2 block">Prix</Label>
                   <div className="flex">
-                    <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-input bg-gray-100 text-gray-700">
-                      💲
-                    </span>
+                    
                     <Input
                       id="price"
                       name="price"
@@ -350,7 +348,7 @@ export default function CreateProductPage() {
                   </div>
                 </div>
 
-                <div>
+                <div >
                   <Label htmlFor="stock" className="mb-2 block">Stock 📦</Label>
                   <Select
                     value={form.stock}
