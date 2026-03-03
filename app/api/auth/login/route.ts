@@ -1,17 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+import bcrypt from "bcryptjs"
+
+const routeMap: Record<string, string> = {
+  ADMIN: "/admin/dashboard",
+  ETABLISSEMENT: "/etablissement/produits",
+  RESPONSABLE: "/responsable/produits",
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json();
-
+    const { email, password } = await request.json()
 
     if (!email || !password) {
       return NextResponse.json(
         { error: "Email and password are required" },
         { status: 400 }
-      );
+      )
     }
 
     const user = await prisma.user.findUnique({
@@ -25,39 +30,29 @@ export async function POST(request: NextRequest) {
         lastName: true,
         isActive: true,
       },
-    });
-
+    })
 
     if (!user || !user.isActive) {
       return NextResponse.json(
         { error: "Invalid credentials" },
         { status: 401 }
-      );
+      )
     }
 
-    // Check if password is hashed or plain text
-    let isValidPassword = false;
-    if (user.password.startsWith('$2')) {
-      // Password is hashed with bcrypt
-      isValidPassword = await bcrypt.compare(password, user.password);
+    let isValidPassword = false
+    if (user.password.startsWith("$2")) {
+      isValidPassword = await bcrypt.compare(password, user.password)
     } else {
-      // Password is plain text (NOT SECURE - fix this!)
-      isValidPassword = password === user.password;
-      console.warn("WARNING: Password not hashed for user:", user.email);
+      isValidPassword = password === user.password
+      console.warn("WARNING: Password not hashed for user:", user.email)
     }
 
     if (!isValidPassword) {
       return NextResponse.json(
         { error: "Invalid credentials" },
         { status: 401 }
-      );
+      )
     }
-
-    const routeMap = {
-      ADMIN: "/admin/dashboard",
-      ETABLISSEMENT: "/etablissement/produits",
-      RESPONSABLE: "/responsable/produits",
-    };
 
     const userSession = {
       id: user.id,
@@ -65,27 +60,29 @@ export async function POST(request: NextRequest) {
       role: user.role,
       firstName: user.firstName,
       lastName: user.lastName,
-      route: routeMap[user.role as keyof typeof routeMap],
-    };
+      route: routeMap[user.role] ?? "/auth/login",
+    }
 
-    const response = NextResponse.json({
-      success: true,
-      user: userSession,
-    });
+    const response = NextResponse.json({ success: true, user: userSession })
 
-    response.cookies.set("lg_user_role", user.role, {
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24, // 24 hours
-    });
+      sameSite: "lax" as const,
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    }
 
-    return response;
+    // ✅ Set all 3 cookies in one place — no need for /api/auth/set-cookies
+    response.cookies.set("lg_user_id", user.id, cookieOptions)
+    response.cookies.set("lg_user_role", user.role, cookieOptions)
+    response.cookies.set("lg_user_email", user.email, cookieOptions)
+
+    return response
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("Login error:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
-    );
+    )
   }
 }

@@ -3,11 +3,7 @@
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
@@ -26,12 +22,9 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     setError("")
 
     try {
-      
       const response = await fetch("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       })
 
@@ -44,60 +37,35 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
       }
 
       if (!data.user) {
-        console.error("ERREUR: data.user est undefined!")
         setError("Invalid server response: missing user data")
         setLoading(false)
         return
       }
 
-      const userSession = {
-        id: data.user.id || data.user.userId,
+      // ✅ Save to localStorage
+      localStorage.setItem("userSession", JSON.stringify({
+        id: data.user.id,
         email: data.user.email,
         role: data.user.role,
         route: data.user.route,
-        name: data.user.name || data.user.firstName,
-      }
-      
-      localStorage.setItem("userSession", JSON.stringify(userSession))
-      localStorage.setItem("userId", data.user.id || data.user.userId)
-      localStorage.setItem("userRole", data.user.role || "")
-      localStorage.setItem("userEmail", data.user.email || "")
+        name: data.user.firstName,
+      }))
+      localStorage.setItem("userId", data.user.id)
+      localStorage.setItem("userRole", data.user.role)
+      localStorage.setItem("userEmail", data.user.email)
 
-
-      // IMPORTANT: Sauvegarder les cookies pour le middleware
-      // Le middleware cherche 'lg_user_role' dans les cookies
-      const role = data.user.role
-
-      // Créer les cookies manuellement (car on ne peut pas accéder à res en client)
-      // On va faire un appel à l'API pour setter les cookies
-      await fetch("/api/auth/set-cookies", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: data.user.id || data.user.userId,
-          role: role,
-          email: data.user.email,
-        }),
-      })
-
-
-      // Save session in authUtils
+      // ✅ Save in authUtils
       authUtils.setSession({
         email: data.user.email,
         role: data.user.role,
         route: data.user.route,
       })
 
-      
-      // Redirect after a short delay to ensure cookies are set
-      setTimeout(() => {
-        router.push(data.user.route)
-      }, 100)
+      // ✅ Cookies already set by the API — redirect directly
+      router.push(data.user.route)
     } catch (err) {
-      setError("An error occurred. Please try again.")
       console.error("Erreur:", err)
+      setError("An error occurred. Please try again.")
       setLoading(false)
     }
   }
@@ -111,7 +79,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">Welcome back</h1>
                 <p className="text-muted-foreground text-balance">
-                  Login to your Acme Inc account
+                  Login to your account
                 </p>
               </div>
 
@@ -131,10 +99,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
               <Field>
                 <div className="flex items-center">
                   <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <a
-                    href="#"
-                    className="ml-auto text-sm underline-offset-2 hover:underline"
-                  >
+                  <a href="#" className="ml-auto text-sm underline-offset-2 hover:underline">
                     Forgot your password?
                   </a>
                 </div>
@@ -153,14 +118,14 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
               )}
 
               <Field>
-                <Button type="submit" disabled={loading}>
+                <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? "Logging in..." : "Login"}
                 </Button>
               </Field>
             </FieldGroup>
           </form>
 
-          <div className="bg-muted relative hidden md:block flex items-center justify-center">
+          <div className="bg-muted relative hidden md:block">
             <img
               src="/lg.png"
               alt="Image"
