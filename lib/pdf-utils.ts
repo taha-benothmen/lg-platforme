@@ -246,7 +246,7 @@ export const generateDevisPDFContent = (devisData: any, isFromCreation: boolean 
         ${etablissement.address ? `
         <div class="info-row">
           <span class="info-label">Adresse:</span>
-          <span class="info-value">Tunis</span>
+          <span class="info-value">Tunis-</span>
         </div>
         ` : ''}
         ${etablissement.phone ? `
