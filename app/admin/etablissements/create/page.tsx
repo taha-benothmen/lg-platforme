@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Plus, AlertCircle, CheckCircle2, Download, Share2 } from "lucide-react"
+import { Plus, AlertCircle, CheckCircle2, Download, Trash2 } from "lucide-react"
 
 type UserRole = "ADMIN" | "RESPONSABLE" | "ETABLISSEMENT"
 
@@ -57,24 +57,6 @@ function downloadUserFile(user: CreatedUser) {
   document.body.appendChild(element)
   element.click()
   document.body.removeChild(element)
-}
-
-async function shareUserData(user: CreatedUser) {
-  const text = `Identifiants de connexion:\nEmail: ${user.email}\nMot de passe: ${user.password}\nRôle: ${user.role}`
-  
-  if (navigator.share) {
-    try {
-      await navigator.share({
-        title: "Identifiants utilisateur",
-        text: text,
-      })
-    } catch (err) {
-      console.error("Erreur lors du partage:", err)
-    }
-  } else {
-    navigator.clipboard.writeText(text)
-    alert("Identifiants copiés dans le presse-papiers")
-  }
 }
 
 export function CreateUserDialog({ onUserCreated }: { onUserCreated: () => void }) {
@@ -158,6 +140,62 @@ export function CreateUserDialog({ onUserCreated }: { onUserCreated: () => void 
       fetchChildEtablissements(parentId)
     } else {
       setChildEtablissements([])
+    }
+  }
+
+  const deleteEtablissement = async (etablissementId: string, etablissementName: string, isParent = false) => {
+    try {
+      // Nettoyer l'ID pour s'assurer qu'il ne contient pas de paramètres
+      const cleanId = etablissementId.split('?')[0]
+      
+      // Pour les établissements principaux (isParent=true), on utilise toujours cascade=true
+      // pour éviter les problèmes de détection d'enfants qui pourraient être inactifs
+      const hasChildren = isParent
+      
+      const confirmMessage = hasChildren 
+        ? `Êtes-vous sûr de vouloir supprimer l'établissement "${etablissementName}" et tous ses sous-établissements ?\n\n⚠️ Tous les utilisateurs associés seront également supprimés.`
+        : `Êtes-vous sûr de vouloir supprimer l'établissement "${etablissementName}" ?\n\n⚠️ Tous les utilisateurs associés seront également supprimés.`
+
+      if (!confirm(confirmMessage)) {
+        return
+      }
+      
+      const cascadeParam = hasChildren ? "&cascade=true&deleteUsers=true" : "&deleteUsers=true"
+      const url = `/api/etablissements?id=${cleanId}${cascadeParam}`
+      
+      const response = await fetch(url, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        
+        // Essayer d'extraire un message d'erreur plus détaillé
+        let errorMessage = "Erreur lors de la suppression"
+        if (data.error) {
+          errorMessage = data.error
+        } else if (data.message) {
+          errorMessage = data.message
+        } else if (response.statusText) {
+          errorMessage = `Erreur HTTP: ${response.status} ${response.statusText}`
+        }
+        
+        throw new Error(errorMessage)
+      }
+
+      const result = await response.json()
+      
+      // Rafraîchir les listes
+      fetchEtablissements()
+      if (selectedParentId === etablissementId) {
+        setSelectedParentId("")
+        setSelectedEtablissementId("")
+        setChildEtablissements([])
+      } else if (selectedEtablissementId === etablissementId) {
+        setSelectedEtablissementId("")
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur")
     }
   }
 
@@ -437,6 +475,18 @@ export function CreateUserDialog({ onUserCreated }: { onUserCreated: () => void 
                         >
                           <Plus className="h-4 w-4" />
                         </Button>
+                        {selectedParentId && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => deleteEtablissement(selectedParentId, allEtablissements.find(e => e.id === selectedParentId)?.name || '', true)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            title="Supprimer cet établissement"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -470,6 +520,18 @@ export function CreateUserDialog({ onUserCreated }: { onUserCreated: () => void 
                             >
                               <Plus className="h-4 w-4" />
                             </Button>
+                            {selectedEtablissementId && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => deleteEtablissement(selectedEtablissementId, childEtablissements.find(e => e.id === selectedEtablissementId)?.name || '')}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Supprimer ce sous-établissement"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         ) : (
                           <div className="flex gap-2 items-center">
@@ -669,14 +731,6 @@ export function CreateUserDialog({ onUserCreated }: { onUserCreated: () => void 
             >
               <Download className="h-4 w-4" />
               Télécharger
-            </Button>
-            <Button
-              onClick={() => shareUserData(createdUser!)}
-              variant="outline"
-              className="gap-2"
-            >
-              <Share2 className="h-4 w-4" />
-              Partager
             </Button>
             <Button
               onClick={() => {

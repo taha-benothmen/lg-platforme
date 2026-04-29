@@ -23,7 +23,7 @@ import {
     ],
   
     responsable: [
-      //{ label: "Dashboard", route: "dashboard", icon: LayoutDashboard },
+      { label: "Dashboard", route: "/responsable/dashboard", icon: LayoutDashboard, requiresOrgHead: true },
       { label: "Catalogue produits", route: "/responsable/produits", icon: Package },
       { label: "Mes devis", route: "/responsable/devis", icon: FileText },
       { label: "Créer devis", route: "/responsable/devis/create", icon: PlusSquare },

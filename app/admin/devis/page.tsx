@@ -173,7 +173,7 @@ export default function AdminDevisPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalDevis, setTotalDevis] = useState(0)
   const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null)
-  const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
   useEffect(() => {
     setIsClient(true)
@@ -252,19 +252,44 @@ export default function AdminDevisPage() {
     } catch { showAlert("error", "Erreur", "Impossible de charger les détails du devis") }
   }
 
-  const handleDownloadDevis = (devisData: DevisItem) => {
+  const handleDownloadDevis = async (devisData: DevisItem) => {
     try {
-      setIsDownloading(true)
-      const htmlContent = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Devis ${devisData.id.slice(0, 8)}</title></head><body><h1>Devis #${devisData.id.slice(0, 8)}</h1><p>Client: ${devisData.clientName}</p><p>Total: ${parseFloat(devisData.total).toFixed(2)} TND</p></body></html>`
-      const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" })
-      const url = window.URL.createObjectURL(blob)
+      if (!userId) {
+        showAlert("error", "Erreur", "ID utilisateur introuvable")
+        return
+      }
+
+      setDownloadingId(devisData.id)
+
+      const url = new URL(`/api/devis/${devisData.id}/pdf`, window.location.origin)
+      url.searchParams.set("userId", userId)
+
+      const res = await fetch(url.toString())
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`
+        try {
+          const e = await res.json()
+          msg = e?.error || msg
+        } catch {}
+        throw new Error(msg)
+      }
+
+      const blob = await res.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
-      a.href = url; a.download = `devis-${devisData.id.slice(0, 8)}.html`
-      document.body.appendChild(a); a.click()
-      document.body.removeChild(a); window.URL.revokeObjectURL(url)
-      showAlert("success", "Téléchargement réussi", `devis-${devisData.id.slice(0, 8)}.html`)
-    } catch { showAlert("error", "Erreur", "Impossible de télécharger le devis") }
-    finally { setIsDownloading(false) }
+      a.href = downloadUrl
+      a.download = `devis-${devisData.id.slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(downloadUrl)
+
+      showAlert("success", "Téléchargement réussi", `devis-${devisData.id.slice(0, 8)}.pdf`)
+    } catch (error) {
+      showAlert("error", "Erreur", error instanceof Error ? error.message : "Impossible de télécharger le devis")
+    } finally {
+      setDownloadingId(null)
+    }
   }
 
   const downloadInvoicePdf = () => {
@@ -456,8 +481,13 @@ export default function AdminDevisPage() {
                               <Button size="sm" variant="outline" onClick={() => handleViewDetails(q.id)}>
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              <Button size="sm" variant="outline" onClick={() => handleDownloadDevis(q)} disabled={isDownloading}>
-                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDownloadDevis(q)}
+                                disabled={downloadingId === q.id}
+                              >
+                                {downloadingId === q.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                               </Button>
                             </div>
                           </TableCell>
@@ -476,7 +506,7 @@ export default function AdminDevisPage() {
                     key={q.id} q={q}
                     onView={handleViewDetails}
                     onDownload={handleDownloadDevis}
-                    isDownloading={isDownloading}
+                    isDownloading={downloadingId === q.id}
                   />
                 ))}
               </div>

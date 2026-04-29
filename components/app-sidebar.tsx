@@ -27,6 +27,8 @@ type MenuItem = {
   label: string
   route: string
   icon?: ElementType
+  /** If true, item is hidden for responsables attached to a sous-établissement */
+  requiresOrgHead?: boolean
 }
 
 interface AppSidebarProps {
@@ -50,6 +52,106 @@ export const AppSidebar: FC<AppSidebarProps> = ({ menu }) => {
   const [userId, setUserId] = useState<string>("")
   const [unreadCount, setUnreadCount] = useState(0)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [resolvedMenu, setResolvedMenu] = useState<MenuItem[]>([])
+  const [menuChecked, setMenuChecked] = useState(false)
+
+  useEffect(() => {
+    const sessionRaw = localStorage.getItem("userSession")
+    if (!sessionRaw) {
+      setResolvedMenu(menu)
+      setMenuChecked(true)
+      return
+    }
+
+    try {
+      const user = JSON.parse(sessionRaw) as UserSession
+      const role = user.role
+      
+      // For non-RESPONSABLE roles, immediately filter out requiresOrgHead items
+      if (role !== "RESPONSABLE") {
+        setResolvedMenu(menu.filter((m) => !m.requiresOrgHead))
+        setMenuChecked(true)
+        return
+      }
+      
+      // For RESPONSABLE roles, start with filtered menu and check async
+      setResolvedMenu(menu.filter((m) => !m.requiresOrgHead))
+    } catch {
+      setResolvedMenu(menu.filter((m) => !m.requiresOrgHead))
+      setMenuChecked(true)
+    }
+  }, [menu])
+
+  useEffect(() => {
+    const userSession = localStorage.getItem("userSession")
+    if (userSession) {
+      try {
+        const user: UserSession = JSON.parse(userSession)
+        setUserId(user.id)
+        let displayName = "Utilisateur"
+        if (user.firstName && user.lastName) {
+          displayName = `${user.firstName} ${user.lastName}`
+        } else if (user.firstName) {
+          displayName = user.firstName
+        } else if (user.lastName) {
+          displayName = user.lastName
+        } else if (user.email) {
+          displayName = user.email.split("@")[0]
+        }
+        setUserName(displayName)
+      } catch (error) {
+        console.error("Erreur lors de la lecture des données utilisateur:", error)
+      }
+    }
+    setIsLoaded(true)
+  }, [])
+
+  useEffect(() => {
+    const sessionRaw = localStorage.getItem("userSession")
+    const uid = localStorage.getItem("userId")
+    if (!sessionRaw || !uid) {
+      setResolvedMenu(menu)
+      setMenuChecked(true)
+      return
+    }
+    let role: string | undefined
+    try {
+      role = (JSON.parse(sessionRaw) as UserSession).role
+    } catch {
+      setResolvedMenu(menu)
+      setMenuChecked(true)
+      return
+    }
+    if (role !== "RESPONSABLE" || !menu.some((m) => m.requiresOrgHead)) {
+      setResolvedMenu(menu)
+      setMenuChecked(true)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/utilisateurs/${uid}`)
+        const data = await res.json()
+        if (cancelled) return
+        if (!res.ok || !data?.success) {
+          setResolvedMenu(menu.filter((m) => !m.requiresOrgHead))
+          setMenuChecked(true)
+          return
+        }
+        const isOrgHead = data.role === "RESPONSABLE" && data.etablissement && !data.etablissement.parentId
+        setResolvedMenu(isOrgHead ? menu : menu.filter((m) => !m.requiresOrgHead))
+        setMenuChecked(true)
+      } catch (error) {
+        if (!cancelled) {
+          setResolvedMenu(menu.filter((m) => !m.requiresOrgHead))
+          setMenuChecked(true)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [menu])
 
   useEffect(() => {
     const userSession = localStorage.getItem("userSession")
@@ -131,7 +233,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ menu }) => {
       {/* ── Nav items ── */}
       <SidebarContent className="px-2 py-3">
         <SidebarMenu>
-          {menu.map((item) => {
+          {resolvedMenu.map((item) => {
             const Icon = item.icon
             return (
               <SidebarMenuItem key={item.route}>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { emailService } from "@/lib/email"
 
 type UserRole = "ADMIN" | "RESPONSABLE" | "ETABLISSEMENT"
 
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
       const etablissements = await prisma.etablissement.findMany({
         where: {
           parentId: parentId,
+          isActive: true, // Ne retourner que les établissements actifs
         },
         select: {
           id: true,
@@ -100,6 +102,7 @@ export async function GET(request: NextRequest) {
       const childEtablissements = await prisma.etablissement.findMany({
         where: {
           parentId: userEtab.id,
+          isActive: true, // Ne retourner que les établissements actifs
         },
         select: {
           id: true,
@@ -131,6 +134,9 @@ export async function GET(request: NextRequest) {
         createdAt: true,
         updatedAt: true,
         parentId: true,
+      },
+      where: {
+        isActive: true, // Ne retourner que les établissements actifs
       },
       orderBy: {
         createdAt: "desc",
@@ -208,6 +214,21 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      try {
+        await emailService.sendCredentialsEmail(
+          email,
+          firstName || '',
+          email,
+          password,
+          role
+        )
+        console.log(`Credentials email sent to ${email}`)
+      } catch (emailError) {
+        console.error('Failed to send credentials email:', emailError)
+        // Ne pas bloquer la création de l'utilisateur si l'email échoue
+        // Mais logger l'erreur pour le suivi
+      }
+
       return NextResponse.json(user, { status: 201 })
     }
 
@@ -236,6 +257,134 @@ export async function POST(request: NextRequest) {
     console.error("Error creating:", error)
     return NextResponse.json(
       { error: "Erreur lors de la création" },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    const cascade = searchParams.get('cascade') === 'true'
+    const deleteUsers = searchParams.get('deleteUsers') === 'true'
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID de l'établissement requis" },
+        { status: 400 }
+      )
+    }
+
+    // Vérifier si l'établissement existe
+    const etablissement = await prisma.etablissement.findUnique({
+      where: { id },
+      include: {
+        children: {
+          include: {
+            users: true
+          }
+        },
+        users: true
+      }
+    })
+
+    if (!etablissement) {
+      return NextResponse.json(
+        { error: `Établissement non trouvé. ID: ${id}` },
+        { status: 404 }
+      )
+    }
+
+    let totalUsersToDelete = 0
+    let totalEtablissementsToDelete = 1
+
+    // Gérer les utilisateurs de l'établissement principal
+    if (etablissement.users.length > 0) {
+      if (!deleteUsers) {
+        return NextResponse.json(
+          { error: `Cet établissement a ${etablissement.users.length} utilisateur(s) associé(s). Utilisez ?deleteUsers=true pour supprimer également les utilisateurs` },
+          { status: 400 }
+        )
+      }
+      totalUsersToDelete += etablissement.users.length
+    }
+
+    // Gérer les sous-établissements
+    if (etablissement.children.length > 0) {
+      if (!cascade) {
+        return NextResponse.json(
+          { error: "Cet établissement a des sous-établissements. Utilisez ?cascade=true pour supprimer également les sous-établissements" },
+          { status: 400 }
+        )
+      }
+
+      totalEtablissementsToDelete += etablissement.children.length
+
+      // Compter les utilisateurs dans les sous-établissements
+      const allChildUsers = etablissement.children.reduce((total, child) => total + child.users.length, 0)
+      
+      if (allChildUsers > 0) {
+        if (!deleteUsers) {
+          return NextResponse.json(
+            { error: `Les sous-établissements ont ${allChildUsers} utilisateur(s) associé(s). Utilisez ?deleteUsers=true pour supprimer également les utilisateurs` },
+            { status: 400 }
+          )
+        }
+        totalUsersToDelete += allChildUsers
+      }
+
+      // Supprimer les utilisateurs des sous-établissements en cascade si demandé
+      if (deleteUsers) {
+        const childIds = etablissement.children.map(child => child.id)
+        await prisma.user.updateMany({
+          where: { etablissementId: { in: childIds } },
+          data: { isActive: false }
+        })
+      }
+
+      // Supprimer les sous-établissements en cascade
+      await prisma.etablissement.updateMany({
+        where: { parentId: id },
+        data: { isActive: false }
+      })
+    }
+
+    // Supprimer les utilisateurs de l'établissement principal si demandé
+    if (deleteUsers && etablissement.users.length > 0) {
+      await prisma.user.updateMany({
+        where: { etablissementId: id },
+        data: { isActive: false }
+      })
+    }
+
+    // Supprimer l'établissement principal (soft delete)
+    await prisma.etablissement.update({
+      where: { id },
+      data: { isActive: false }
+    })
+
+    let message = "Établissement supprimé avec succès"
+    if (cascade && deleteUsers) {
+      message = `Établissement, ses sous-établissements (${etablissement.children.length}) et les utilisateurs associés (${totalUsersToDelete}) supprimés avec succès`
+    } else if (cascade) {
+      message = `Établissement et ses sous-établissements (${etablissement.children.length}) supprimés avec succès`
+    } else if (deleteUsers) {
+      message = `Établissement et ses utilisateurs (${totalUsersToDelete}) supprimés avec succès`
+    }
+
+    return NextResponse.json(
+      { 
+        message, 
+        deletedCount: totalEtablissementsToDelete,
+        deletedUsers: totalUsersToDelete
+      },
+      { status: 200 }
+    )
+  } catch (error) {
+    console.error("Error deleting établissement:", error)
+    return NextResponse.json(
+      { error: "Erreur lors de la suppression" },
       { status: 500 }
     )
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { Decimal } from "@prisma/client/runtime/library"
+import { getAllChildEstablishmentIds } from "@/lib/etablissement-hierarchy"
 
 type DevisPayload = {
   userId: string
@@ -50,22 +51,6 @@ async function validateUserAccess(userId: string) {
   }
 
   return { valid: true, user, isAdmin: false }
-}
-
-async function getAllChildEstablishmentIds(parentId: string): Promise<string[]> {
-  const children = await prisma.etablissement.findMany({
-    where: { parentId: parentId },
-    select: { id: true },
-  })
-
-  let allIds = children.map(c => c.id)
-
-  for (const child of children) {
-    const grandchildren = await getAllChildEstablishmentIds(child.id)
-    allIds = [...allIds, ...grandchildren]
-  }
-
-  return allIds
 }
 
 function formatDevisResponse(devis: any, includePdf: boolean = false) {
@@ -695,8 +680,6 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-   
-
     const updatedDevis = await prisma.devis.update({
       where: { id: devisId },
       data: updateData,
@@ -714,6 +697,40 @@ export async function PUT(request: NextRequest) {
       newResponsableStatus: updatedDevis.responsableStatus,
       newAdminStatus: updatedDevis.adminStatus,
     })
+
+    // Envoyer une notification à l'établissement si le statut admin a changé
+    if (adminStatus && updatedDevis.createdById) {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        })
+
+        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/notifications/send-to-etablissement`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            devisId: updatedDevis.id,
+            devis: {
+              id: updatedDevis.id,
+              clientName: updatedDevis.clientName || "Client",
+              createdById: updatedDevis.createdById,
+            },
+            statusType: 'admin',
+            newStatus: adminStatus,
+            changedBy: user,
+          }),
+        })
+      } catch (notificationError) {
+        console.error("Error sending notification to etablissement:", notificationError)
+        // Ne pas échouer la requête principale si la notification échoue
+      }
+    }
 
     return NextResponse.json(
       {
